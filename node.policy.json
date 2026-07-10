@@ -1,13 +1,13 @@
 {
-    "properties": [
-		{
-			"name": "openhorizon.allowPrivileged",
-			"value": true
-		},
-		{
-			"name": "purpose",
-			"value": "edgelake"
-		}
-],
-	"constraints": []
-}  
+  "properties": [
+    {
+      "name": "openhorizon.allowPrivileged",
+      "value": true
+    },
+    {
+      "name": "purpose",
+      "value": "anylog-standalone-operator"
+    }
+  ],
+  "constraints": []
+}

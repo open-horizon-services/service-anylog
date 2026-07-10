@@ -1,0 +1,86 @@
+services:
+  ${CONTAINER_NAME}-init:
+    image: busybox
+    user: root
+    group_add:
+      - ${DOCKER_GID}
+    restart: "no"
+    command: [
+      "sh", "-c",
+      "chown -R 10001:10001
+        /app/AnyLog-Network/anylog
+        /app/AnyLog-Network/blockchain
+        /app/AnyLog-Network/data
+#        /app/AnyLog-Network/tpm
+      "
+    ]
+    volumes:
+      - ${CONTAINER_NAME}-anylog:/app/AnyLog-Network/anylog
+      - ${CONTAINER_NAME}-blockchain:/app/AnyLog-Network/blockchain
+      - ${CONTAINER_NAME}-data:/app/AnyLog-Network/data
+#      - ${CONTAINER_NAME}-tpm:/app/AnyLog-Network/tpm_dir
+#      - ${CONTAINER_NAME}-local-scripts:/app/deployment-scripts
+  ${CONTAINER_NAME}:
+    image: ${IMAGE}:${TAG}
+    user: root
+    pid: "host"
+    group_add:
+      - ${DOCKER_GID}
+    platform: ${DOCKER_PLATFORM}
+    restart: always
+    env_file:
+    container_name: ${CONTAINER_NAME}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    stdin_open: true
+    tty: true
+    ports:
+      - ${ANYLOG_SERVER_PORT}:${ANYLOG_SERVER_PORT}
+      - ${ANYLOG_REST_PORT}:${ANYLOG_REST_PORT}
+      - ${ANYLOG_BROKER_PORT}:${ANYLOG_BROKER_PORT}
+    depends_on:
+      ${CONTAINER_NAME}-init:
+        condition: service_completed_successfully
+    volumes:
+      - ${CONTAINER_NAME}-anylog:/app/AnyLog-Network/anylog
+      - ${CONTAINER_NAME}-blockchain:/app/AnyLog-Network/blockchain
+      - ${CONTAINER_NAME}-data:/app/AnyLog-Network/data
+      - ${CONTAINER_NAME}-ext-lib:/app/Anylog-Network/external_lib
+#      - ${CONTAINER_NAME}-tpm:/app/AnyLog-Network/tpm_dir
+      - ${CONTAINER_NAME}-local-scripts:/app/deployment-scripts
+      - ${DOCKER_SOCKET}:/var/run/docker.sock
+      - ${HOST_PROC}:/host_proc:ro
+      - ${HOST_ROOT}:/host:ro
+      - ${HOST_SYS}:/host_sys:ro
+
+  ${CONTAINER_NAME}-debug:
+    image: nicolaka/netshoot
+    container_name: ${CONTAINER_NAME}-debug
+    network_mode: "container:${CONTAINER_NAME}"
+    stdin_open: true
+    tty: true
+    restart: "no"
+#    profiles:
+#      - debug
+    depends_on:
+      ${CONTAINER_NAME}:
+        condition: service_started
+#  ${CONTAINER_NAME}-debug:
+#    image: nicolaka/netshoot
+#    container_name: ${CONTAINER_NAME}-debug
+#    network_mode: "container:${CONTAINER_NAME}"
+#    stdin_open: true
+#    tty: true
+#    restart: "no"
+##    profiles:
+##      - debug
+#    depends_on:
+#      ${CONTAINER_NAME}:
+#        condition: service_started
+volumes:
+  ${CONTAINER_NAME}-anylog:
+  ${CONTAINER_NAME}-blockchain:
+  ${CONTAINER_NAME}-data:
+  ${CONTAINER_NAME}-ext-lib:
+#  ${CONTAINER_NAME}-tpm:
+  ${CONTAINER_NAME}-local-scripts:

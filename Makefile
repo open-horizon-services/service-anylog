@@ -1,202 +1,308 @@
 #!/bin/Makefile
+$(info LOADING MAKEFILE)
 
+# ──────────────────────────────────────────────
 # Default values
-SHELL := /bin/bash
+# ──────────────────────────────────────────────
+export IS_MANUAL      ?= false
+export ANYLOG_TYPE    ?= anylog-generic
+export TAG            ?= 2.0.2606
+export IMAGE          ?= anylogco/anylog-network
+export TEST_CONN      ?=
+export LICENSE_KEY    ?=
+export PROMPT_LICENSE ?= true
 
-export EDGELAKE_TYPE ?= generic
-export HZN_ORG_ID ?= myorg
-export HZN_LISTEN_IP ?= 127.0.0.1
-export SERVICE_NAME ?= service-edgelake-$(EDGELAKE_TYPE)
-export SERVICE_VERSION ?= 1.3.5
-export TEST_CONN ?=
+# OpenHorizon configs
+export HZN_ORG_ID      ?= myorg
+export HZN_LISTEN_IP   ?= 127.0.0.1
+export SERVICE_VERSION ?= $(TAG)
 
-# Detect OS type
-export OS := $(shell uname -s)
-
-# Conditional port override based on EDGELAKE_TYPE
-
-export DOCKER_IMAGE_VERSION := 1.3.2504
-ARCH := $(shell hzn architecture)
-ifeq ($(ARCH),aarch64 arm64)
-	DOCKER_IMAGE_VERSION := 1.3.2504-arm64
-endif
-ifneq ($(filter test-node test-network,$(MAKECMDGOALS)),test-node test-network)
-	export NODE_NAME := $(shell cat docker-makefiles/edgelake_${EDGELAKE_TYPE}.env | grep NODE_NAME | awk -F "=" '{print $$2}'| sed 's/ /-/g' | tr '[:upper:]' '[:lower:]')
-	export ANYLOG_SERVER_PORT := $(shell cat docker-makefiles/edgelake_${EDGELAKE_TYPE}.env | grep ANYLOG_SERVER_PORT | awk -F "=" '{print $$2}')
-	export ANYLOG_REST_PORT := $(shell cat docker-makefiles/edgelake_${EDGELAKE_TYPE}.env | grep ANYLOG_REST_PORT | awk -F "=" '{print $$2}')
-	export ANYLOG_BROKER_PORT := $(shell cat docker-makefiles/edgelake_${EDGELAKE_TYPE}.env | grep ANYLOG_BROKER_PORT | awk -F "=" '{print $$2}' | grep -v '^$$')
-	export REMOTE_CLI := $(shell cat docker-makefiles/edgelake_${EDGELAKE_TYPE}.env | grep REMOTE_CLI | awk -F "=" '{print $$2}')
-	export ENABLE_NEBULA := $(shell cat docker-makefiles/edgelake_${EDGELAKE_TYPE}.env | grep ENABLE_NEBULA | awk -F "=" '{print $$2}')
-	export DOCKER_IMAGE_BASE ?= $(shell cat docker-makefiles/.env | grep IMAGE | awk -F "=" '{print $$2}')
-	export IMAGE_ORG ?= $(shell echo $(DOCKER_IMAGE_BASE) |  cut -d '/' -f 1)
-	export IMAGE_NAME ?= $(shell echo $(DOCKER_IMAGE_BASE) |  cut -d '/' -f 2)
+# Resolve short-form aliases (operator → anylog-operator)
+ifeq ($(ANYLOG_TYPE),$(filter $(ANYLOG_TYPE),generic master operator query publisher standalone-operator standalone-publisher))
+    ANYLOG_TYPE := anylog-$(ANYLOG_TYPE)
+    export ANYLOG_TYPE
 endif
 
-ifeq ($(OS),Linux)
-	export DOCKER_COMPOSE_TEMPLATE := docker-makefiles/docker-compose-template-base.yaml
+# Detect OS / architecture (still needed by OH scripts: env2json.sh, hzn commands)
+export OS          := $(shell uname -s)
+export UNAME_M     := $(shell uname -m)
+export ANYLOG_UID  := $(shell id -u)
+export ANYLOG_GID  := $(shell id -g)
+
+ifeq ($(UNAME_M),x86_64)
+	export DOCKER_PLATFORM := linux/amd64
+else ifneq (,$(filter $(UNAME_M),aarch64 arm64))
+	export DOCKER_PLATFORM := linux/arm64
 else
-	export DOCKER_COMPOSE_TEMPLATE := docker-makefiles/docker-compose-template-ports-base.yaml
+	$(error Unsupported architecture: $(UNAME_M))
 endif
 
-export CONTAINER_CMD := $(shell if command -v podman >/dev/null 2>&1; then echo "podman"; else echo "docker"; fi)
+# ARCH: prefer hzn if available, otherwise derive from uname
+export ARCH := $(shell command -v hzn >/dev/null 2>&1 && hzn architecture || \
+	( [ "$(UNAME_M)" = "x86_64" ] && echo "amd64" || echo "arm64" ))
 
-export DOCKER_COMPOSE_CMD := $(shell if command -v podman-compose >/dev/null 2>&1; then echo "podman-compose"; \
-	elif command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; else echo "docker compose"; fi)
+# -------------------
+# Load IMAGE / NODE_NAME / SERVICE_NAME from per-type config (used by OH targets)
+# -------------------
+ifneq ($(strip $(ANYLOG_TYPE)),)
+    _SINGLE_FILE := docker-makefiles/$(ANYLOG_TYPE)/node_configs.env
 
-export PYTHON_CMD := $(shell if command -v python >/dev/null 2>&1; then echo "python"; \
-	elif command -v python3 >/dev/null 2>&1; then echo "python3"; fi)
+    export NODE_NAME    := $(shell grep -m1 '^NODE_NAME=' "$(_SINGLE_FILE)" 2>/dev/null | cut -d= -f2- | tr -d '"\r')
+    export SERVICE_NAME ?= $(NODE_NAME)
+endif
 
+# Generated OH policy files live alongside the .env, inside docker-makefiles/$(ANYLOG_TYPE)/
+export POLICY_DIR := docker-makefiles/$(ANYLOG_TYPE)
+
+# Needed by prep-build (docker pull/tag/push) — deploy.sh does its own detection for the docker lifecycle targets
+export CONTAINER_CMD := $(shell command -v podman >/dev/null 2>&1 && echo "podman" || echo "docker")
+
+# ──────────────────────────────────────────────
+# Internal — build the flag string passed to deploy.sh
+# ──────────────────────────────────────────────
+_FLAGS := --type $(ANYLOG_TYPE) --tag $(TAG)
+ifneq ($(IMAGE),anylogco/anylog-network)
+    _FLAGS += --image $(IMAGE)
+endif
+ifeq ($(IS_MANUAL),true)
+    _FLAGS += --manual
+endif
+ifneq ($(TEST_CONN),)
+    _FLAGS += --test-conn $(TEST_CONN)
+endif
+ifeq ($(origin LICENSE_KEY),command line)
+    _FLAGS += --license-key '$(LICENSE_KEY)'
+endif
+ifneq ($(filter true True TRUE 1 yes Yes YES,$(PROMPT_LICENSE)),)
+    _FLAGS += --prompt-license
+endif
+
+ANYLOG_SH := bash deploy.sh
+
+#========= prep configs =========
 all: help
-#======================================================================================================================#
-#  											Docker related commands													   #
-#======================================================================================================================#
-generate-docker-compose:
-	@bash docker-makefiles/update_docker_compose.sh
-	@NODE_NAME="$(NODE_NAME)" ANYLOG_SERVER_PORT=${ANYLOG_SERVER_PORT} ANYLOG_REST_PORT=${ANYLOG_REST_PORT} ANYLOG_BROKER_PORT=${ANYLOG_BROKER_PORT} \
-	REMOTE_CLI=$(REMOTE_CLI) ENABLE_NEBULA=$(ENABLE_NEBULA) \
-	envsubst < docker-makefiles/docker-compose-template.yaml > docker-makefiles/docker-compose.yaml
-build: ## pull image from the docker hub repository
-	$(CONTAINER_CMD) pull docker.io/anylogco/edgelake:$(DOCKER_IMAGE_VERSION)
-dry-run: generate-docker-compose ## create docker-compose.yaml file based on the .env configuration file(s)
-	@echo "========================="
-	@echo "Dry Run $(EDGELAKE_TYPE)"
-	@echo "========================="
-up: ## start EdgeLake instance
-	@echo "========================="
-	@echo "Deploy EdgeLake $(EDGELAKE_TYPE)"
-	@echo "========================="
-	@$(MAKE) generate-docker-compose
-	@$(DOCKER_COMPOSE_CMD) -f docker-makefiles/docker-compose.yaml up -d
-	@rm -f docker-makefiles/docker-compose.yaml docker-makefiles/docker-compose-template.yaml
-down: ## Stop EdgeLAke instance
-	@echo "Stop EdgeLake $(EDGELAKE_TYPE)"
-	@echo "========================="
-	@echo "Stop EdgeLake $(EDGELAKE_TYPE)"
-	@echo "========================="
-	@$(MAKE) generate-docker-compose
-	@$(DOCKER_COMPOSE_CMD) -f docker-makefiles/docker-compose.yaml down
-	@rm -f docker-makefiles/docker-compose.yaml docker-makefiles/docker-compose-template.yaml
-clean-vols: ## Stop & remove volumes for EdgeLAke instance
-	@echo
-	@echo "==============================================="
-	@echo "Stop + remove volumes for EdgeLake $(EDGELAKE_TYPE)"
-	@echo "==============================================="
-	@$(MAKE) generate-docker-compose
-	@$(DOCKER_COMPOSE_CMD) -f docker-makefiles/docker-compose.yaml down -v
-	@rm -f docker-makefiles/docker-compose.yaml docker-makefiles/docker-compose-template.yaml
-clean: ## Stop AnyLog instance and remove associated volumes & image
-	@echo "=================================================="
-	@echo "Stop EdgeLake $(EDGELAKE_TYPE) & Remove Volumes and Images"
-	@echo "=================================================="
-	@$(MAKE) generate-docker-compose
-	@$(DOCKER_COMPOSE_CMD) -f docker-makefiles/docker-compose.yaml down --volumes --rmi all
-	@rm -f docker-makefiles/docker-compose.yaml docker-makefiles/docker-compose-template.yaml
-attach: ## Attach to docker / podman container (use ctrl-d to detach)
-	@$(CONTAINER_CMD) attach --detach-keys=ctrl-d $(NODE_NAME)
-exec: ## Attach to the shell executable for the container
-	@$(CONTAINER_CMD) exec -it $(NODE_NAME) /bin/bash
-logs: ## View container logs
-	@$(CONTAINER_CMD) logs $(NODE_NAME)
 
-#======================================================================================================================#
-#  										   OpenHorizon related commands											   	   #
-#======================================================================================================================#
-prep-service: ## prepare `service.deployment.json` file using python / python3
-	@$(PYTHON_CMD) create_policy.py $(SERVICE_VERSION) docker-makefiles/edgelake_${EDGELAKE_TYPE}.env
-full-deploy: publish-service publish-service-policy  publish-deployment-policy agent-run ## deploy all services and policies, then start agent
-deploy: publish-deployment-policy agent-run ## publish deployment and run agent
-publish: publish-service publish-service-policy publish-deployment-policy ## publish services and policies
-publish-version: publish-service publish-service-policy ## update version
+# Only used by the native OH targets below (deploy.sh does its own check internally)
+check-configs:
+	@if [ "$(IS_MANUAL)" != "true" ] && [ -z "$(ANYLOG_TYPE)" ]; then \
+		echo "ERROR: Missing AnyLog type"; \
+		$(MAKE) help; \
+		exit 1; \
+	elif [ "$(IS_MANUAL)" != "true" ] && [ ! -d docker-makefiles/$(ANYLOG_TYPE) ]; then \
+		echo "ERROR: Missing directory for ANYLOG_TYPE=$(ANYLOG_TYPE)"; \
+		$(MAKE) help; \
+		exit 1; \
+	fi
+
+#========= Docker lifecycle (delegates to deploy.sh) =========
+login: ## log into Docker Hub for AnyLog
+	$(ANYLOG_SH) login $(_FLAGS)
+
+pull: ## pull image from Docker Hub
+	$(ANYLOG_SH) pull $(_FLAGS)
+
+dry-run: ## generate docker-compose.yaml (or print docker-run cmd in manual mode)
+	$(ANYLOG_SH) dry-run $(_FLAGS)
+
+up: ## start AnyLog instance
+	$(ANYLOG_SH) up $(_FLAGS)
+
+down: ## stop AnyLog instance
+	$(ANYLOG_SH) down $(_FLAGS)
+
+clean: ## stop container and remove volumes
+	$(ANYLOG_SH) clean $(_FLAGS)
+
+clean-all: ## stop container, remove volumes and image
+	$(ANYLOG_SH) clean-all $(_FLAGS)
+
+logs: ## view container logs
+	$(ANYLOG_SH) logs $(_FLAGS)
+
+logs-f: ## follow container logs
+	$(ANYLOG_SH) logs-f $(_FLAGS)
+
+attach: ## attach to container (ctrl-d to detach)
+	$(ANYLOG_SH) attach $(_FLAGS)
+
+exec: ## attach to bash shell (anylog user)
+	$(ANYLOG_SH) exec $(_FLAGS)
+
+exec-root: ## attach to bash shell as root
+	$(ANYLOG_SH) exec-root $(_FLAGS)
+
+#========= testing (delegates to deploy.sh) =========
+full-test: ## run test-status + test-node + test-network
+	$(ANYLOG_SH) full-test $(_FLAGS)
+
+test-status: ## execute `get status` against AnyLog node
+	$(ANYLOG_SH) test-status $(_FLAGS)
+
+test-node: ## execute `test node` against AnyLog node
+	$(ANYLOG_SH) test-node $(_FLAGS)
+
+test-network: ## execute `test network` against AnyLog node
+	$(ANYLOG_SH) test-network $(_FLAGS)
+
+check-processes: ## execute `get processes` against AnyLog node
+	$(ANYLOG_SH) check-processes $(_FLAGS)
+
+#========= Open Horizon commands (native — no docker-compose equivalent) =========
+# TODO: Remove prep-build target once AnyLog releases use the proper Open Horizon
+#       version format (#.#.####). At that point, pass TAG directly to full-deploy.
+prep-build: check-configs ## [TEMPORARY] pull image under original TAG, retag to OH-compatible format, and push
+	$(eval OH_VERSION := 1.0.$(shell date +%Y%m%d))
+	@echo "Pulling $(IMAGE):$(TAG)..."
+	$(CONTAINER_CMD) pull docker.io/$(IMAGE):$(TAG)
+	@echo "Retagging → $(IMAGE):$(OH_VERSION)"
+	$(CONTAINER_CMD) tag docker.io/$(IMAGE):$(TAG) docker.io/$(IMAGE):$(OH_VERSION)
+	@echo "Pushing $(IMAGE):$(OH_VERSION)..."
+	$(CONTAINER_CMD) push docker.io/$(IMAGE):$(OH_VERSION)
+	@echo ""
+	@echo "Image ready. Now run:"
+	@echo "  make full-deploy ANYLOG_TYPE=$(ANYLOG_TYPE) TAG=$(OH_VERSION)"
+
+license-check: check-configs ## resolve/prompt for LICENSE_KEY and write it into node_configs.env
+	$(ANYLOG_SH) license-check $(_FLAGS)
+
+prep-service: check-configs license-check ## generate service.definition.json, service.policy.json, service.deployment.json and node.policy.json
+	@echo "Open Horizon Dry Run $(ANYLOG_TYPE) - $(NODE_NAME)"
+	bash ./docker-makefiles/env2json.sh $(POLICY_DIR) . $(TAG)
+
+full-deploy: prep-service publish-service publish-service-policy publish-deployment-policy agent-run ## deploy all services and policies, then start agent
+
+deploy: prep-service publish-deployment-policy agent-run ## publish deployment and run agent
+
+publish: prep-service publish-service publish-service-policy publish-deployment-policy ## publish services and policies
+
+publish-version: prep-service publish-service publish-service-policy ## update version
+
 publish-service: ## publish service
 	@echo "=================="
 	@echo "PUBLISHING SERVICE"
 	@echo "=================="
-	@#hzn exchange service publish -O -P --json-file=service.definition.json
-	@hzn exchange service publish --org=${HZN_ORG_ID} --user-pw=${HZN_EXCHANGE_USER_AUTH} -O -P --json-file=service.definition.json
-publish-service-policy: ##  public service policy
+	@hzn exchange service publish --org=$(HZN_ORG_ID) --user-pw=$(HZN_EXCHANGE_USER_AUTH) -O -P \
+		--json-file=$(POLICY_DIR)/service.definition.json
+
+publish-service-policy: ## publish service policy
 	@echo "========================="
 	@echo "PUBLISHING SERVICE POLICY"
 	@echo "========================="
-	# @hzn exchange service addpolicy -f service.policy.json $(HZN_ORG_ID)/$(SERVICE_NAME)_$(SERVICE_VERSION)_$(ARCH)
-	@hzn exchange service addpolicy --org=${HZN_ORG_ID} --user-pw=${HZN_EXCHANGE_USER_AUTH} -f service.policy.json $(HZN_ORG_ID)/$(SERVICE_NAME)_$(SERVICE_VERSION)_$(ARCH)
+	@hzn exchange service addpolicy --org=$(HZN_ORG_ID) --user-pw=$(HZN_EXCHANGE_USER_AUTH) \
+		-f $(POLICY_DIR)/service.policy.json \
+		$(HZN_ORG_ID)/$(SERVICE_NAME)_$(SERVICE_VERSION)_$(ARCH)
+
 publish-deployment-policy: prep-service ## publish deployment policy
 	@echo "============================"
 	@echo "PUBLISHING DEPLOYMENT POLICY"
 	@echo "============================"
-	# @hzn exchange deployment addpolicy -f deployment.policy.json $(HZN_ORG_ID)/policy-$(SERVICE_NAME)_$(SERVICE_VERSION)
-	@hzn exchange deployment addpolicy --org=$(HZN_ORG_ID) --user-pw=$(HZN_EXCHANGE_USER_AUTH) -f service.deployment.json $(HZN_ORG_ID)/policy-$(SERVICE_NAME)_$(SERVICE_VERSION)
+	@hzn exchange deployment addpolicy --org=$(HZN_ORG_ID) --user-pw=$(HZN_EXCHANGE_USER_AUTH) \
+		-f $(POLICY_DIR)/service.deployment.json \
+		$(HZN_ORG_ID)/policy-$(SERVICE_NAME)_$(SERVICE_VERSION)
+
 agent-run: ## start agent
 	@echo "================"
 	@echo "REGISTERING NODE"
 	@echo "================"
-	@#hzn register --policy=node.policy.json
-	@hzn register --name=hzn-client --policy=node.policy.json
-	@watch $(MAKE) hzn-agreement-list #w atch agreement list
-hzn-clean: ## unregister agent(s) from OpenHorizon
+	@hzn register --name=hzn-client --policy=$(POLICY_DIR)/node.policy.json
+	@watch $(MAKE) hzn-agreement-list
+
+hzn-clean-all: unregister-agent remove-deployment-policy remove-service-policy remove-service ## unregister node, remove all policies/service, and wipe image+volumes
+
+remove-service: ## remove service from hzn exchange
+	@echo "=================="
+	@echo "REMOVING SERVICE"
+	@echo "=================="
+	@hzn exchange service remove -f $(HZN_ORG_ID)/$(SERVICE_NAME)_$(SERVICE_VERSION)_$(ARCH)
+	@echo ""
+
+remove-service-policy: ## remove service policy from hzn exchange
+	@echo "======================="
+	@echo "REMOVING SERVICE POLICY"
+	@echo "======================="
+	@hzn exchange service removepolicy -f $(HZN_ORG_ID)/$(SERVICE_NAME)_$(SERVICE_VERSION)_$(ARCH)
+	@echo ""
+
+remove-deployment-policy: ## remove deployment policy from hzn exchange
+	@echo "=========================="
+	@echo "REMOVING DEPLOYMENT POLICY"
+	@echo "=========================="
+	@hzn exchange deployment removepolicy -f $(HZN_ORG_ID)/policy-$(SERVICE_NAME)_$(SERVICE_VERSION)
+	@echo ""
+
+unregister-agent: ## unregister agent(s) from OpenHorizon
 	@echo "==================="
 	@echo "UN-REGISTERING NODE"
 	@echo "==================="
 	@hzn unregister -f
 	@echo ""
+
+hzn-status: hzn-agreement-list hzn-event-list hzn-logs ## get a full summary of the logs
+
 hzn-agreement-list: ## check agreement list
 	@hzn agreement list
-hzn-logs: ## logs for Docker container when running in OpenHorizon
-	@$(CONTAINER_CMD) logs $(CONTAINER_ID)
-deploy-check: ## check deployment
-	@hzn deploycheck all -t device -B service.deployment.json --service=service.definition.json --service-pol=service.policy.json --node-pol=node.policy.json
 
-#======================================================================================================================#
-#  											Testing / Help related commands											   #
-#======================================================================================================================#
-test-node: ## Test a node via REST interface
-ifeq ($(TEST_CONN), )
-	@echo "Missing Connection information (Param Name: TEST_CONN)"
-	exit 1
-endif
-	@echo "Test Node against $(TEST_CONN)"
-	@curl -X GET http://$(TEST_CONN) -H "command: test node" -H "User-Agent: AnyLog/1.23" -w "\n"
-test-network: ## Test the network via REST interface
-ifeq ($(TEST_CONN), )
-	@echo "Missing Connection information (Param Name: TEST_CONN)"
-	exit 1
-endif
-	@echo "Test Network against $(TEST_CONN)"
-	@curl -X GET http://$(TEST_CONN) -H "command: test network" -H "User-Agent: AnyLog/1.23" -w "\n"
-check-vars: ## Show all environment variable values
-	@echo "====================="
-	@echo   "ENVIRONMENT VARIABLES"
-	@echo "====================="
-	@echo "EDGELAKE_TYPE          default: generic                               actual: $(EDGELAKE_TYPE)"
-	@echo "DOCKER_IMAGE_BASE      default: anylogco/edgelake                     actual: $(DOCKER_IMAGE_BASE)"
-	@echo "DOCKER_IMAGE_NAME      default: edgelake                              actual: $(IMAGE_NAME)"
-	@echo "DOCKER_IMAGE_VERSION   default: 1.3.2504                                actual: $(DOCKER_IMAGE_VERSION)"
-	@echo "DOCKER_HUB_ID          default: anylogco                              actual: $(IMAGE_ORG)"
-	@echo "HZN_ORG_ID             default: myorg                                 actual: ${HZN_ORG_ID}"
-	@echo "HZN_LISTEN_IP          default: 127.0.0.1                             actual: ${HZN_LISTEN_IP}"
-	@echo "SERVICE_NAME                                                          actual: ${SERVICE_NAME}"
-	@echo "SERVICE_VERSION                                                       actual: ${SERVICE_VERSION}"
-	@echo "ARCH                   default: amd64                                 actual: ${ARCH}"
-	@echo "==================="
-	@echo "EDGELAKE DEFINITION"
-	@echo "==================="
-	@echo "EDGELAKE_TYPE         Default: generic            Value: $(EDGELAKE_TYPE)"
-	@echo "NODE_NAME             Default: edgelake-node      Value: $(NODE_NAME)"
-	@echo "DOCKER_IMAGE_VERSION  Default: 1.3.2504             Value: $(DOCKER_IMAGE_VERSION)"
-	@echo "ANYLOG_SERVER_PORT    Default: 32548              Value: $(ANYLOG_SERVER_PORT)"
-	@echo "ANYLOG_REST_PORT      Default: 32549              Value: $(ANYLOG_REST_PORT)"
-	@echo "ANYLOG_BROKER_PORT    Default:                    Value: $(ANYLOG_BROKER_PORT)"
+hzn-event-list: ## list event logs
+	@echo "==========="
+	@echo " EVENT LOG"
+	@echo "==========="
+	@hzn eventlog list
+
+hzn-logs: ## view service logs
+	@echo "========="
+	@echo "SERVICE LOG"
+	@echo "========="
+	@hzn service log -f $(SERVICE_NAME)
+
+deploy-check: ## check deployment (Open Horizon dry-run against generated policy files)
+	@hzn deploycheck all -t device \
+		-B $(POLICY_DIR)/service.deployment.json \
+		--service=$(POLICY_DIR)/service.definition.json \
+		--service-pol=$(POLICY_DIR)/service.policy.json \
+		--node-pol=$(POLICY_DIR)/node.policy.json
+
+#========= validate & help =========
+check-vars: ## show resolved variable values (docker + OH)
+	$(ANYLOG_SH) check-vars $(_FLAGS)
+	@echo ""
+	@echo "-- Open Horizon --"
+	@echo "HZN_ORG_ID            Default: myorg                    Value: $(HZN_ORG_ID)"
+	@echo "HZN_LISTEN_IP         Default: 127.0.0.1                Value: $(HZN_LISTEN_IP)"
+	@echo "SERVICE_NAME                                            Value: $(SERVICE_NAME)"
+	@echo "SERVICE_VERSION                                         Value: $(SERVICE_VERSION)"
+	@echo "ARCH                                                    Value: $(ARCH)"
+	@echo "POLICY_DIR                                              Value: $(POLICY_DIR)"
+
 help:
 	@echo "Usage: make [target] [VARIABLE=value]"
 	@echo ""
 	@echo "Available targets:"
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-		awk -F':|##' '{ printf "  \033[36m%-20s\033[0m %s\n", $$1, $$3 }'
+		awk -F':|##' '{ printf "  \033[36m%-24s\033[0m %s\n", $$1, $$3 }'
 	@echo ""
 	@echo "Common variables you can override:"
-	@echo "  EDGELAKE_TYPE         Type of node to deploy (e.g., master, operator)"
-	@echo "  DOCKER_IMAGE_VERSION  Docker image tag to use"
-	@echo "  NODE_NAME           Custom name for the container"
-	@echo "  ANYLOG_SERVER_PORT  Port for server communication"
-	@echo "  ANYLOG_REST_PORT    Port for REST API"
-	@echo "  ANYLOG_BROKER_PORT  Optional broker port"
-	@echo "  TEST_CONN           REST connection information for testing network connectivity"
+	@echo "  IS_MANUAL           Use docker run instead of docker compose (default: false)"
+	@echo "  ANYLOG_TYPE         Type of node to deploy (generic, master, operator, query, publisher,"
+	@echo "                      standalone-operator, standalone-publisher)"
+	@echo "  IMAGE               Docker image repo"
+	@echo "  TAG                 Docker image tag"
+	@echo "  LICENSE_KEY         AnyLog license key"
+	@echo "  PROMPT_LICENSE      Prompt if no saved license (default: true)"
+	@echo "  TEST_CONN           REST connection info for test-node / test-network"
+	@echo "  HZN_ORG_ID          Open Horizon exchange org"
+	@echo "  HZN_LISTEN_IP       Open Horizon listen IP"
+	@echo ""
+	@echo "Without make:"
+	@echo "  bash deploy.sh help"
+	@echo ""
+
+.PHONY: all check-configs license-check \
+        login pull dry-run up down clean clean-all \
+        logs logs-f attach exec exec-root \
+        full-test test-status test-node test-network check-processes \
+        prep-build prep-service full-deploy deploy publish publish-version \
+        publish-service publish-service-policy publish-deployment-policy \
+        agent-run hzn-clean-all remove-service remove-service-policy \
+        remove-deployment-policy unregister-agent hzn-status hzn-agreement-list \
+        hzn-event-list hzn-logs deploy-check \
+        check-vars help

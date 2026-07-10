@@ -1,6 +1,7 @@
 .DS_Store
 .idea/
-docker_makefile/
-service.deployment.json
+#service.deployment.json
 docker-makefiles/docker-compose-template.yaml
 docker-makefiles/docker-compose.yaml
+docker-makefiles/*/*.json
+docker-makefiles/docker-compose-files/

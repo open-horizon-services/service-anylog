@@ -30,14 +30,9 @@ services:
     restart: always
     env_file:
     container_name: ${CONTAINER_NAME}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     stdin_open: true
     tty: true
-    ports:
-      - ${ANYLOG_SERVER_PORT}:${ANYLOG_SERVER_PORT}
-      - ${ANYLOG_REST_PORT}:${ANYLOG_REST_PORT}
-      - ${ANYLOG_BROKER_PORT}:${ANYLOG_BROKER_PORT}
+    network_mode: ${NETWORK_TYPE}
     depends_on:
       ${CONTAINER_NAME}-init:
         condition: service_completed_successfully
@@ -52,19 +47,6 @@ services:
       - ${HOST_PROC}:/host_proc:ro
       - ${HOST_ROOT}:/host:ro
       - ${HOST_SYS}:/host_sys:ro
-
-  ${CONTAINER_NAME}-debug:
-    image: nicolaka/netshoot
-    container_name: ${CONTAINER_NAME}-debug
-    network_mode: "container:${CONTAINER_NAME}"
-    stdin_open: true
-    tty: true
-    restart: "no"
-#    profiles:
-#      - debug
-    depends_on:
-      ${CONTAINER_NAME}:
-        condition: service_started
 #  ${CONTAINER_NAME}-debug:
 #    image: nicolaka/netshoot
 #    container_name: ${CONTAINER_NAME}-debug
@@ -77,6 +59,9 @@ services:
 #    depends_on:
 #      ${CONTAINER_NAME}:
 #        condition: service_started
+networks:
+  ${NETWORK_TYPE}:
+    external: true
 volumes:
   ${CONTAINER_NAME}-anylog:
   ${CONTAINER_NAME}-blockchain:

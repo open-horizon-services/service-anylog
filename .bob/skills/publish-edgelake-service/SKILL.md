@@ -53,6 +53,53 @@ Also check that `python3` and `make` are available:
 python3 --version && make --version
 ```
 
+**Important — resolve ORG for later steps.** `HZN_ORG_ID` is stored in `hzn`'s own config and is
+**not** exported into shell subshells. Parse it once from `hzn exchange user list` and carry it
+forward as a shell variable throughout Steps 5–7:
+
+```shell
+ORG=$(hzn exchange user list 2>/dev/null | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); print(list(d.keys())[0].split('/')[0])")
+echo "ORG=$ORG"
+```
+
+**Important — verify container registry credentials.** `hzn exchange service publish` pulls the
+image to sign it. Ensure the container runtime is authenticated before Step 5. Detect which runtime
+is available and use it:
+
+```shell
+if command -v podman &>/dev/null; then
+  podman login docker.io
+elif command -v docker &>/dev/null; then
+  docker login docker.io
+else
+  echo "ERROR: neither podman nor docker found"
+fi
+```
+
+If neither is installed, offer to install Docker for the user's platform before proceeding:
+- **macOS**: `brew install --cask docker` (requires Homebrew), then open the Docker app to start the daemon
+- **Linux (apt)**: `sudo apt-get update && sudo apt-get install -y docker.io && sudo systemctl enable --now docker`
+- **Linux (dnf/yum)**: `sudo dnf install -y docker && sudo systemctl enable --now docker`
+
+After installation, re-run the login check before proceeding to Step 5.
+If credentials are not cached the user will need to supply them. Do not proceed to Step 5 until
+login succeeds.
+
+**Important — verify `DOCKER_IMAGE_BASE`.** This is read from `docker-makefiles/.env` (gitignored).
+Check that the `IMAGE=` line is set to the correct registry path:
+
+```shell
+cat docker-makefiles/.env | grep '^IMAGE'
+```
+
+If it shows the wrong image or is missing, ask the user for the correct value and update it:
+
+```shell
+sed -i '' 's|IMAGE=.*|IMAGE=<correct-image>|' docker-makefiles/.env
+# On Linux omit the '' after -i
+```
+
 ---
 
 ## Step 3 — Validate the dotenv configuration
@@ -100,44 +147,68 @@ generated file — they are excluded by design. Reference outputs for each node 
 
 ## Step 5 — Publish the service definition
 
+**Do not use `make publish-service`** — the Makefile suppresses all stderr with `@`, so failures
+produce no useful output. Run the underlying `hzn` command directly with all required env vars
+explicitly exported in the same shell invocation:
+
 ```shell
-make publish-service EDGELAKE_TYPE=<NODE_TYPE>
+export SERVICE_NAME=service-edgelake-<NODE_TYPE> && \
+export SERVICE_VERSION=2.0.2606 && \
+export ARCH=$(hzn architecture) && \
+export DOCKER_IMAGE_VERSION=2.0.2606 && \
+export DOCKER_IMAGE_BASE=$(grep '^IMAGE' docker-makefiles/.env | awk -F '=' '{print $2}') && \
+hzn exchange service publish \
+  --org="$ORG" \
+  --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
+  -O -P --json-file=service.definition.json 2>&1
 ```
 
 After the command completes, verify:
 ```shell
 hzn exchange service list
 ```
-Confirm that `service-edgelake-<NODE_TYPE>` appears in the list. If publish fails with an auth
-error, re-check `HZN_EXCHANGE_USER_AUTH`.
+Confirm that `service-edgelake-<NODE_TYPE>_<version>_<arch>` appears in the list.
 
 ---
 
 ## Step 6 — Publish the service policy
 
+**Do not use `make publish-service-policy`** — same stderr-suppression issue. Run directly:
+
 ```shell
-make publish-service-policy EDGELAKE_TYPE=<NODE_TYPE>
+hzn exchange service addpolicy \
+  --org="$ORG" \
+  --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
+  -f service.policy.json \
+  "${ORG}/service-edgelake-<NODE_TYPE>_<version>_$(hzn architecture)" 2>&1
 ```
 
 This attaches the constraint `purpose == edgelake AND openhorizon.allowPrivileged == true` to the
-published service. No separate verification command is needed unless the user requests it.
+published service.
 
 ---
 
 ## Step 7 — Publish the deployment policy
 
-```shell
-make publish-deployment-policy EDGELAKE_TYPE=<NODE_TYPE>
-```
+**Do not use `make publish-deployment-policy`** — same stderr-suppression issue. Export the
+required vars and run directly:
 
-Note: this target automatically re-runs `prep-service` (Step 4) — so if the dotenv was updated
-after Step 4, the regenerated file will reflect those changes.
+```shell
+export SERVICE_NAME=service-edgelake-<NODE_TYPE> && \
+export SERVICE_VERSION=2.0.2606 && \
+export HZN_ORG_ID=$ORG && \
+hzn exchange deployment addpolicy \
+  --org="$ORG" \
+  --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
+  -f service.deployment.json \
+  "${ORG}/policy-service-edgelake-<NODE_TYPE>_<version>" 2>&1
+```
 
 Verify:
 ```shell
-hzn exchange deployment listpolicy
+hzn exchange deployment listpolicy 2>&1 | grep edgelake
 ```
-Confirm that `policy-service-edgelake-<NODE_TYPE>_<version>` appears in the list.
+Confirm that `policy-service-edgelake-<NODE_TYPE>_<version>` appears in the output.
 
 ---
 

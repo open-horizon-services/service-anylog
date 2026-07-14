@@ -58,6 +58,44 @@ python3 --version && make --version
 
 If any check fails, stop and help the user resolve it before continuing.
 
+**Resolve ORG.** `HZN_ORG_ID` is not exported into shell subshells — parse it once and carry it
+forward as `$ORG` throughout all publish steps:
+
+```shell
+ORG=$(hzn exchange user list 2>/dev/null | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); print(list(d.keys())[0].split('/')[0])")
+echo "ORG=$ORG"
+```
+
+**Verify container registry login.** `hzn` pulls the image to sign it during service publish.
+Detect which runtime is available and authenticate:
+
+```shell
+if command -v podman &>/dev/null; then
+  podman login docker.io
+elif command -v docker &>/dev/null; then
+  docker login docker.io
+else
+  echo "ERROR: neither podman nor docker found"
+fi
+```
+
+If neither is installed, offer to install Docker for the user's platform before proceeding:
+- **macOS**: `brew install --cask docker` (requires Homebrew), then open the Docker app to start the daemon
+- **Linux (apt)**: `sudo apt-get update && sudo apt-get install -y docker.io && sudo systemctl enable --now docker`
+- **Linux (dnf/yum)**: `sudo dnf install -y docker && sudo systemctl enable --now docker`
+
+After installation, re-run the login check before proceeding.
+
+**Verify `DOCKER_IMAGE_BASE`.** This is read from `docker-makefiles/.env` (gitignored). Check and
+update if needed:
+
+```shell
+cat docker-makefiles/.env | grep '^IMAGE'
+# If wrong or missing:
+sed -i '' 's|IMAGE=.*|IMAGE=<correct-image>|' docker-makefiles/.env
+```
+
 ---
 
 ## Step 2 — Configure all three dotenv files
@@ -112,13 +150,19 @@ Follow all steps from the `publish-edgelake-service` skill for `EDGELAKE_TYPE=ma
    ```shell
    make prep-service EDGELAKE_TYPE=master
    ```
-2. Publish service definition, service policy, and deployment policy:
+2. Publish service definition — run `hzn` directly (the `make publish` targets suppress all stderr
+   and will silently fail; see `publish-edgelake-service` skill Steps 5–7 for the full commands):
    ```shell
-   make publish EDGELAKE_TYPE=master
+   export SERVICE_NAME=service-edgelake-master SERVICE_VERSION=2.0.2606 HZN_ORG_ID=$ORG && \
+   export ARCH=$(hzn architecture) DOCKER_IMAGE_VERSION=2.0.2606 && \
+   export DOCKER_IMAGE_BASE=$(grep '^IMAGE' docker-makefiles/.env | awk -F '=' '{print $2}') && \
+   hzn exchange service publish --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -O -P --json-file=service.definition.json 2>&1
+   hzn exchange service addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -f service.policy.json "${ORG}/service-edgelake-master_${SERVICE_VERSION}_$(hzn architecture)" 2>&1
+   hzn exchange deployment addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -f service.deployment.json "${ORG}/policy-service-edgelake-master_${SERVICE_VERSION}" 2>&1
    ```
 3. Verify the deployment policy appeared:
    ```shell
-   hzn exchange deployment listpolicy
+   hzn exchange deployment listpolicy 2>&1 | grep edgelake
    ```
 4. Provide the agent-run command for the user to run on the Master machine:
    ```shell
@@ -145,9 +189,14 @@ Follow all steps from the `publish-edgelake-service` skill for `EDGELAKE_TYPE=qu
    make prep-service EDGELAKE_TYPE=query
    ```
 2. Read `service.deployment.json` and confirm `LEDGER_CONN` is the correct Master IP.
-3. Publish:
+3. Publish (run `hzn` directly — same reason as Step 3):
    ```shell
-   make publish EDGELAKE_TYPE=query
+   export SERVICE_NAME=service-edgelake-query SERVICE_VERSION=2.0.2606 HZN_ORG_ID=$ORG && \
+   export ARCH=$(hzn architecture) DOCKER_IMAGE_VERSION=2.0.2606 && \
+   export DOCKER_IMAGE_BASE=$(grep '^IMAGE' docker-makefiles/.env | awk -F '=' '{print $2}') && \
+   hzn exchange service publish --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -O -P --json-file=service.definition.json 2>&1
+   hzn exchange service addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -f service.policy.json "${ORG}/service-edgelake-query_${SERVICE_VERSION}_$(hzn architecture)" 2>&1
+   hzn exchange deployment addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -f service.deployment.json "${ORG}/policy-service-edgelake-query_${SERVICE_VERSION}" 2>&1
    ```
 4. Provide the agent-run command:
    ```shell
@@ -172,9 +221,14 @@ Follow all steps from the `publish-edgelake-service` skill for `EDGELAKE_TYPE=op
    make prep-service EDGELAKE_TYPE=operator
    ```
 2. Read `service.deployment.json` and confirm `LEDGER_CONN` is the correct Master IP.
-3. Publish:
+3. Publish (run `hzn` directly — same reason as Step 3):
    ```shell
-   make publish EDGELAKE_TYPE=operator
+   export SERVICE_NAME=service-edgelake-operator SERVICE_VERSION=2.0.2606 HZN_ORG_ID=$ORG && \
+   export ARCH=$(hzn architecture) DOCKER_IMAGE_VERSION=2.0.2606 && \
+   export DOCKER_IMAGE_BASE=$(grep '^IMAGE' docker-makefiles/.env | awk -F '=' '{print $2}') && \
+   hzn exchange service publish --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -O -P --json-file=service.definition.json 2>&1
+   hzn exchange service addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -f service.policy.json "${ORG}/service-edgelake-operator_${SERVICE_VERSION}_$(hzn architecture)" 2>&1
+   hzn exchange deployment addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -f service.deployment.json "${ORG}/policy-service-edgelake-operator_${SERVICE_VERSION}" 2>&1
    ```
 4. Provide the agent-run command:
    ```shell

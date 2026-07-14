@@ -2,7 +2,7 @@
   "org": "$HZN_ORG_ID",
   "label": "$SERVICE_NAME for $ARCH",
   "description": "A service to deploy EdgeLake with Open Horizon",
-  "documentation": "https://edgelake.github.io/",
+  "documentation": "https://github.com/AnyLog-co/",
   "url": "$SERVICE_NAME",
   "version": "$SERVICE_VERSION",
   "arch": "$ARCH",

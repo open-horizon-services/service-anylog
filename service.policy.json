@@ -1,6 +1,6 @@
 {
     "properties": [],
     "constraints": [
-        "openhorizon.allowPrivileged == true AND purpose == edgelake"
+        "openhorizon.allowPrivileged == true AND purpose == anylog"
     ]
 }

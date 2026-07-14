@@ -1,15 +1,15 @@
 ---
 name: deploy-edgelake-network
 description: >
-  Deploy a complete 3-node EdgeLake network (Master, Query, Operator) to Open Horizon in the
-  correct order. Use when the user says "deploy EdgeLake network", "set up AnyLog master query
-  operator", "full EdgeLake deployment", "deploy all three nodes", or asks to bring up a complete
-  EdgeLake environment from scratch.
+  Deploy a complete 3-node AnyLog network (Master, Query, Operator) to Open Horizon in the
+  correct order. Use when the user says "deploy AnyLog network", "set up AnyLog master query
+  operator", "full AnyLog deployment", "deploy all three nodes", or asks to bring up a complete
+  AnyLog environment from scratch.
 ---
 
-# Deploy a Full EdgeLake Network to Open Horizon
+# Deploy a Full AnyLog Network to Open Horizon
 
-This skill walks through publishing and registering all three EdgeLake node types — **Master**,
+This skill walks through publishing and registering all three AnyLog node types — **Master**,
 **Query**, and **Operator** — in the correct order. Master must be running before Query or Operator
 can connect, because both depend on a valid `LEDGER_CONN` pointing at the Master.
 
@@ -29,31 +29,31 @@ Ask the user the following questions before touching any files. Collect all answ
 
 - **Single-machine**: `LEDGER_CONN=127.0.0.1:32048` works as-is (when `TCP_BIND=false`).
 - **Multi-machine**: collect the Master node's real network IP (e.g. `192.168.1.10`). This will be
-  set as `LEDGER_CONN` in the Query and Operator env files.
+  set as `LEDGER_CONN` in the Query and Operator config files.
 
 ### 1b — Node names
 
 Ask for (or accept the defaults for) the three node names:
 
-| Node | Default |
-|------|---------|
-| Master | `edgelake-master` |
-| Query | `edgelake-query` |
-| Operator | `edgelake-operator1` |
+| Node | Config dir | `NODE_NAME` default |
+|------|-----------|---------------------|
+| Master | `docker-makefiles/anylog-master/` | _(empty — user must set)_ |
+| Query | `docker-makefiles/anylog-query/` | _(empty — user must set)_ |
+| Operator | `docker-makefiles/anylog-operator/` | _(empty — user must set)_ |
 
 ### 1c — Company name
 
-Ask for the company / organisation name (default: `New Company`). This will be applied uniformly
-across all three nodes.
+Ask for the company / organisation name (default: `My Company`). This will be applied uniformly
+across all three nodes via the `COMPANY_NAME` field in each `node_configs.env`.
 
 ### 1d — Prerequisites check
 
-Run the prerequisite checks from the `publish-edgelake-service` skill (Steps 2):
+Run the prerequisite checks from the `publish-anylog-service` skill (Step 2):
 
 ```shell
 hzn version
 hzn exchange user list
-python3 --version && make --version
+make --version
 ```
 
 If any check fails, stop and help the user resolve it before continuing.
@@ -87,29 +87,20 @@ If neither is installed, offer to install Docker for the user's platform before 
 
 After installation, re-run the login check before proceeding.
 
-**Verify `DOCKER_IMAGE_BASE`.** This is read from `docker-makefiles/.env` (gitignored). Check and
-update if needed:
-
-```shell
-cat docker-makefiles/.env | grep '^IMAGE'
-# If wrong or missing:
-sed -i '' 's|IMAGE=.*|IMAGE=<correct-image>|' docker-makefiles/.env
-```
-
 ---
 
-## Step 2 — Configure all three dotenv files
+## Step 2 — Configure all three node_configs.env files
 
-Use `search_and_replace` to apply the values collected in Step 1 to each env file. After each
+Use `search_and_replace` to apply the values collected in Step 1 to each config file. After each
 edit, use `read_file` to confirm the change is correct.
 
 ### Files to edit
 
-| Node | File |
-|------|------|
-| Master | `docker-makefiles/edgelake_master.env` |
-| Query | `docker-makefiles/edgelake_query.env` |
-| Operator | `docker-makefiles/edgelake_operator.env` |
+| Node | Config file |
+|------|-------------|
+| Master | `docker-makefiles/anylog-master/node_configs.env` |
+| Query | `docker-makefiles/anylog-query/node_configs.env` |
+| Operator | `docker-makefiles/anylog-operator/node_configs.env` |
 
 ### Changes to apply
 
@@ -129,14 +120,14 @@ After all edits, show the user a brief summary table of what was changed:
 
 | File | Field | Old value | New value |
 |------|-------|-----------|-----------|
-| `edgelake_master.env` | `NODE_NAME` | ... | ... |
-| `edgelake_master.env` | `COMPANY_NAME` | ... | ... |
-| `edgelake_query.env` | `NODE_NAME` | ... | ... |
-| `edgelake_query.env` | `COMPANY_NAME` | ... | ... |
-| `edgelake_query.env` | `LEDGER_CONN` | ... | ... |
-| `edgelake_operator.env` | `NODE_NAME` | ... | ... |
-| `edgelake_operator.env` | `COMPANY_NAME` | ... | ... |
-| `edgelake_operator.env` | `LEDGER_CONN` | ... | ... |
+| `anylog-master/node_configs.env` | `NODE_NAME` | ... | ... |
+| `anylog-master/node_configs.env` | `COMPANY_NAME` | ... | ... |
+| `anylog-query/node_configs.env` | `NODE_NAME` | ... | ... |
+| `anylog-query/node_configs.env` | `COMPANY_NAME` | ... | ... |
+| `anylog-query/node_configs.env` | `LEDGER_CONN` | ... | ... |
+| `anylog-operator/node_configs.env` | `NODE_NAME` | ... | ... |
+| `anylog-operator/node_configs.env` | `COMPANY_NAME` | ... | ... |
+| `anylog-operator/node_configs.env` | `LEDGER_CONN` | ... | ... |
 
 Ask the user to confirm before proceeding to Step 3.
 
@@ -144,32 +135,49 @@ Ask the user to confirm before proceeding to Step 3.
 
 ## Step 3 — Deploy the Master node
 
-Follow all steps from the `publish-edgelake-service` skill for `EDGELAKE_TYPE=master`:
+Follow all steps from the `publish-anylog-service` skill for `ANYLOG_TYPE=master`:
 
-1. Generate the deployment policy:
+1. Run license-check and generate the deployment policy files:
    ```shell
-   make prep-service EDGELAKE_TYPE=master
+   make prep-service ANYLOG_TYPE=master
    ```
-2. Publish service definition — run `hzn` directly (the `make publish` targets suppress all stderr
-   and will silently fail; see `publish-edgelake-service` skill Steps 5–7 for the full commands):
+   This runs `docker-makefiles/env2json.sh` and writes policy files into
+   `docker-makefiles/anylog-master/`.
+
+2. Read `SERVICE_NAME` — it is derived from `NODE_NAME` in the config:
    ```shell
-   export SERVICE_NAME=service-edgelake-master SERVICE_VERSION=2.0.2606 HZN_ORG_ID=$ORG && \
-   export ARCH=$(hzn architecture) DOCKER_IMAGE_VERSION=2.0.2606 && \
-   export DOCKER_IMAGE_BASE=$(grep '^IMAGE' docker-makefiles/.env | awk -F '=' '{print $2}') && \
-   hzn exchange service publish --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -O -P --json-file=service.definition.json 2>&1
-   hzn exchange service addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -f service.policy.json "${ORG}/service-edgelake-master_${SERVICE_VERSION}_$(hzn architecture)" 2>&1
-   hzn exchange deployment addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -f service.deployment.json "${ORG}/policy-service-edgelake-master_${SERVICE_VERSION}" 2>&1
+   grep '^NODE_NAME=' docker-makefiles/anylog-master/node_configs.env
    ```
-3. Verify the deployment policy appeared:
+
+3. Publish service definition — run `hzn` directly (the Makefile suppresses all stderr with `@`,
+   so failures produce no useful output; see `publish-anylog-service` skill Steps 5–7 for full
+   commands):
    ```shell
-   hzn exchange deployment listpolicy 2>&1 | grep edgelake
+   export TAG=2.0.2606
+   export SERVICE_NAME=$(grep -m1 '^NODE_NAME=' docker-makefiles/anylog-master/node_configs.env | cut -d= -f2- | tr -d '"')
+   export ARCH=$(hzn architecture)
+   hzn exchange service publish --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -O -P \
+     --json-file=docker-makefiles/anylog-master/service.definition.json 2>&1
+   hzn exchange service addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
+     -f docker-makefiles/anylog-master/service.policy.json \
+     "${ORG}/${SERVICE_NAME}_${TAG}_${ARCH}" 2>&1
+   hzn exchange deployment addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
+     -f docker-makefiles/anylog-master/service.deployment.json \
+     "${ORG}/policy-${SERVICE_NAME}_${TAG}" 2>&1
    ```
-4. Provide the agent-run command for the user to run on the Master machine:
+
+4. Verify the deployment policy appeared:
+   ```shell
+   hzn exchange deployment listpolicy 2>&1 | grep "$SERVICE_NAME"
+   ```
+
+5. Provide the agent-run command for the user to run on the Master machine:
    ```shell
    # Run on the master node machine
-   make agent-run EDGELAKE_TYPE=master
+   make agent-run ANYLOG_TYPE=master
    ```
-5. Ask the user to confirm the Master node is running before proceeding.
+
+6. Ask the user to confirm the Master node is running before proceeding.
    Once they confirm, validate it:
    ```shell
    make test-node TEST_CONN=<master-ip>:32049
@@ -182,27 +190,39 @@ Do **not** proceed to Step 4 until the Master passes `test-node`.
 
 ## Step 4 — Deploy the Query node
 
-Follow all steps from the `publish-edgelake-service` skill for `EDGELAKE_TYPE=query`:
+Follow all steps from the `publish-anylog-service` skill for `ANYLOG_TYPE=query`:
 
 1. Generate the deployment policy:
    ```shell
-   make prep-service EDGELAKE_TYPE=query
+   make prep-service ANYLOG_TYPE=query
    ```
-2. Read `service.deployment.json` and confirm `LEDGER_CONN` is the correct Master IP.
+
+2. Read `service.deployment.json` and confirm `LEDGER_CONN` is the correct Master IP:
+   ```shell
+   grep LEDGER_CONN docker-makefiles/anylog-query/service.deployment.json
+   ```
+
 3. Publish (run `hzn` directly — same reason as Step 3):
    ```shell
-   export SERVICE_NAME=service-edgelake-query SERVICE_VERSION=2.0.2606 HZN_ORG_ID=$ORG && \
-   export ARCH=$(hzn architecture) DOCKER_IMAGE_VERSION=2.0.2606 && \
-   export DOCKER_IMAGE_BASE=$(grep '^IMAGE' docker-makefiles/.env | awk -F '=' '{print $2}') && \
-   hzn exchange service publish --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -O -P --json-file=service.definition.json 2>&1
-   hzn exchange service addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -f service.policy.json "${ORG}/service-edgelake-query_${SERVICE_VERSION}_$(hzn architecture)" 2>&1
-   hzn exchange deployment addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -f service.deployment.json "${ORG}/policy-service-edgelake-query_${SERVICE_VERSION}" 2>&1
+   export TAG=2.0.2606
+   export SERVICE_NAME=$(grep -m1 '^NODE_NAME=' docker-makefiles/anylog-query/node_configs.env | cut -d= -f2- | tr -d '"')
+   export ARCH=$(hzn architecture)
+   hzn exchange service publish --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -O -P \
+     --json-file=docker-makefiles/anylog-query/service.definition.json 2>&1
+   hzn exchange service addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
+     -f docker-makefiles/anylog-query/service.policy.json \
+     "${ORG}/${SERVICE_NAME}_${TAG}_${ARCH}" 2>&1
+   hzn exchange deployment addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
+     -f docker-makefiles/anylog-query/service.deployment.json \
+     "${ORG}/policy-${SERVICE_NAME}_${TAG}" 2>&1
    ```
+
 4. Provide the agent-run command:
    ```shell
    # Run on the query node machine
-   make agent-run EDGELAKE_TYPE=query
+   make agent-run ANYLOG_TYPE=query
    ```
+
 5. Once the user confirms the Query node is running, validate:
    ```shell
    make test-node TEST_CONN=<query-ip>:32349
@@ -214,27 +234,39 @@ Follow all steps from the `publish-edgelake-service` skill for `EDGELAKE_TYPE=qu
 
 ## Step 5 — Deploy the Operator node
 
-Follow all steps from the `publish-edgelake-service` skill for `EDGELAKE_TYPE=operator`:
+Follow all steps from the `publish-anylog-service` skill for `ANYLOG_TYPE=operator`:
 
 1. Generate the deployment policy:
    ```shell
-   make prep-service EDGELAKE_TYPE=operator
+   make prep-service ANYLOG_TYPE=operator
    ```
-2. Read `service.deployment.json` and confirm `LEDGER_CONN` is the correct Master IP.
+
+2. Read `service.deployment.json` and confirm `LEDGER_CONN` is the correct Master IP:
+   ```shell
+   grep LEDGER_CONN docker-makefiles/anylog-operator/service.deployment.json
+   ```
+
 3. Publish (run `hzn` directly — same reason as Step 3):
    ```shell
-   export SERVICE_NAME=service-edgelake-operator SERVICE_VERSION=2.0.2606 HZN_ORG_ID=$ORG && \
-   export ARCH=$(hzn architecture) DOCKER_IMAGE_VERSION=2.0.2606 && \
-   export DOCKER_IMAGE_BASE=$(grep '^IMAGE' docker-makefiles/.env | awk -F '=' '{print $2}') && \
-   hzn exchange service publish --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -O -P --json-file=service.definition.json 2>&1
-   hzn exchange service addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -f service.policy.json "${ORG}/service-edgelake-operator_${SERVICE_VERSION}_$(hzn architecture)" 2>&1
-   hzn exchange deployment addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -f service.deployment.json "${ORG}/policy-service-edgelake-operator_${SERVICE_VERSION}" 2>&1
+   export TAG=2.0.2606
+   export SERVICE_NAME=$(grep -m1 '^NODE_NAME=' docker-makefiles/anylog-operator/node_configs.env | cut -d= -f2- | tr -d '"')
+   export ARCH=$(hzn architecture)
+   hzn exchange service publish --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" -O -P \
+     --json-file=docker-makefiles/anylog-operator/service.definition.json 2>&1
+   hzn exchange service addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
+     -f docker-makefiles/anylog-operator/service.policy.json \
+     "${ORG}/${SERVICE_NAME}_${TAG}_${ARCH}" 2>&1
+   hzn exchange deployment addpolicy --org="$ORG" --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
+     -f docker-makefiles/anylog-operator/service.deployment.json \
+     "${ORG}/policy-${SERVICE_NAME}_${TAG}" 2>&1
    ```
+
 4. Provide the agent-run command:
    ```shell
    # Run on the operator node machine
-   make agent-run EDGELAKE_TYPE=operator
+   make agent-run ANYLOG_TYPE=operator
    ```
+
 5. Once the user confirms the Operator node is running, validate:
    ```shell
    make test-node TEST_CONN=<operator-ip>:32149
@@ -255,16 +287,16 @@ make test-network TEST_CONN=<query-ip>:32349
 Surface the output to the user. A healthy 3-node network shows all three nodes with status `+`:
 
 ```
-Address               Node Type Node Name          Status
----------------------|---------|------------------|------|
-<master-ip>:32048    |master   |edgelake-master   |  +   |
-<query-ip>:32348     |query    |edgelake-query    |  +   |
-<operator-ip>:32148  |operator |edgelake-operator1|  +   |
+Address               Node Type Node Name      Status
+---------------------|---------|--------------|------|
+<master-ip>:32048    |master   |<master-name> |  +   |
+<query-ip>:32348     |query    |<query-name>  |  +   |
+<operator-ip>:32148  |operator |<op-name>     |  +   |
 ```
 
 If any node shows `-` or is missing from the list, check its logs:
 ```shell
-make hzn-logs EDGELAKE_TYPE=<node-type>
+make hzn-logs ANYLOG_TYPE=<node-type>
 ```
 
 ---
@@ -273,12 +305,12 @@ make hzn-logs EDGELAKE_TYPE=<node-type>
 
 To unregister any node's agent:
 ```shell
-make hzn-clean   # run on the respective node machine
+make hzn-clean-all ANYLOG_TYPE=<node-type>   # run on the respective node machine
 ```
 
 To remove published artifacts from the exchange:
 ```shell
-hzn exchange deployment removepolicy ${HZN_ORG_ID}/policy-service-edgelake-<type>_${SERVICE_VERSION}
-hzn exchange service removepolicy ${HZN_ORG_ID}/service-edgelake-<type>_${SERVICE_VERSION}_$(hzn architecture)
-hzn exchange service remove ${HZN_ORG_ID}/service-edgelake-<type>_${SERVICE_VERSION}_$(hzn architecture)
+hzn exchange deployment removepolicy ${HZN_ORG_ID}/policy-${SERVICE_NAME}_${TAG}
+hzn exchange service removepolicy ${HZN_ORG_ID}/${SERVICE_NAME}_${TAG}_$(hzn architecture)
+hzn exchange service remove ${HZN_ORG_ID}/${SERVICE_NAME}_${TAG}_$(hzn architecture)
 ```

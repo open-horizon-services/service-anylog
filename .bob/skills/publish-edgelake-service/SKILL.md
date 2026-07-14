@@ -1,13 +1,13 @@
 ---
-name: publish-edgelake-service
+name: publish-anylog-service
 description: >
-  Publish an EdgeLake Open Horizon service definition, service policy, and deployment policy for a
-  single node type (master, query, or operator). Use when the user says "publish EdgeLake service",
+  Publish an AnyLog Open Horizon service definition, service policy, and deployment policy for a
+  single node type (master, query, or operator). Use when the user says "publish AnyLog service",
   "publish deployment policy", "register Open Horizon service for master / query / operator",
-  "prep-service", or asks to push EdgeLake to the OH exchange for a specific node type.
+  "prep-service", or asks to push AnyLog to the OH exchange for a specific node type.
 ---
 
-# Publish EdgeLake Service to Open Horizon
+# Publish AnyLog Service to Open Horizon
 
 Follow these steps in order. Run all shell commands from the repo root using `execute_command`.
 Do not skip validation steps — they catch the most common failure modes before `hzn` surfaces a
@@ -17,13 +17,15 @@ cryptic error.
 
 ## Step 1 — Confirm the node type
 
-Ask (or confirm from context) which node type the user wants to publish:
+Ask (or confirm from context) which node type the user wants to publish. Valid short-form values
+(the Makefile expands these to their full `anylog-<type>` prefix automatically):
 
 - `master`
 - `query`
 - `operator`
 
-Set `NODE_TYPE` to that value and use it throughout the remaining steps.
+Set `NODE_TYPE` to that value and use it throughout the remaining steps. The full `ANYLOG_TYPE`
+value passed to `make` will be `anylog-<NODE_TYPE>` (e.g. `anylog-master`).
 
 ---
 
@@ -48,9 +50,9 @@ export HZN_EXCHANGE_URL=<exchange-url>      # e.g. http://localhost:3090/v1
 export HZN_FSS_CSSURL=<css-url>            # e.g. http://localhost:9443/
 ```
 
-Also check that `python3` and `make` are available:
+Also check that `make` is available:
 ```shell
-python3 --version && make --version
+make --version
 ```
 
 **Important — resolve ORG for later steps.** `HZN_ORG_ID` is stored in `hzn`'s own config and is
@@ -86,60 +88,54 @@ After installation, re-run the login check before proceeding to Step 5.
 If credentials are not cached the user will need to supply them. Do not proceed to Step 5 until
 login succeeds.
 
-**Important — verify `DOCKER_IMAGE_BASE`.** This is read from `docker-makefiles/.env` (gitignored).
-Check that the `IMAGE=` line is set to the correct registry path:
-
-```shell
-cat docker-makefiles/.env | grep '^IMAGE'
-```
-
-If it shows the wrong image or is missing, ask the user for the correct value and update it:
-
-```shell
-sed -i '' 's|IMAGE=.*|IMAGE=<correct-image>|' docker-makefiles/.env
-# On Linux omit the '' after -i
-```
-
 ---
 
-## Step 3 — Validate the dotenv configuration
+## Step 3 — Validate the node_configs.env configuration
 
-Read the dotenv file for the chosen node type:
+Config files are stored per node type inside `docker-makefiles/`:
 
-| Node type | Dotenv file |
+| Node type | Config file |
 |-----------|-------------|
-| `master`  | `docker-makefiles/edgelake_master.env` |
-| `query`   | `docker-makefiles/edgelake_query.env` |
-| `operator`| `docker-makefiles/edgelake_operator.env` |
+| `master`  | `docker-makefiles/anylog-master/node_configs.env` |
+| `query`   | `docker-makefiles/anylog-query/node_configs.env` |
+| `operator`| `docker-makefiles/anylog-operator/node_configs.env` |
 
 Use `read_file` to read the file, then surface the following values to the user for confirmation:
 
 | Field | What to check |
 |-------|--------------|
-| `NODE_NAME` | Should be unique and meaningful (not the default `edgelake-node`) |
-| `COMPANY_NAME` | Should reflect the user's organisation (not the default `New Company`) |
+| `NODE_NAME` | Should be unique and meaningful (not empty) — this becomes `SERVICE_NAME` |
+| `COMPANY_NAME` | Should reflect the user's organisation (not the default `My Company`) |
 | `ANYLOG_SERVER_PORT` | Expected defaults: master=32048, query=32348, operator=32148 |
 | `ANYLOG_REST_PORT` | Expected defaults: master=32049, query=32349, operator=32149 |
 | `LEDGER_CONN` | **Query and Operator only**: warn if still set to `127.0.0.1:32048` and ask whether this is a single-machine or multi-machine deployment. For multi-machine, the user must update this to the Master node's real IP before proceeding. |
 
-If the user needs to update any field, use `search_and_replace` on the appropriate env file, then
-re-read it to confirm the change landed correctly.
+If the user needs to update any field, use `search_and_replace` on the appropriate `node_configs.env`
+file, then re-read it to confirm the change landed correctly.
 
 ---
 
-## Step 4 — Generate the deployment policy
+## Step 4 — Run license-check and generate policy files
 
 ```shell
-make prep-service EDGELAKE_TYPE=<NODE_TYPE>
+make prep-service ANYLOG_TYPE=anylog-<NODE_TYPE>
 ```
 
-This runs `create_policy.py` which reads the dotenv file and writes `service.deployment.json` at
-the repo root. After it completes, read `service.deployment.json` and show the user:
+This runs `license-check` (resolves/prompts for `LICENSE_KEY` and writes it into `node_configs.env`)
+followed by `docker-makefiles/env2json.sh`, which reads the config and writes four policy files
+into `docker-makefiles/anylog-<NODE_TYPE>/`:
+
+- `service.definition.json`
+- `service.policy.json`
+- `service.deployment.json`
+- `node.policy.json`
+
+After it completes, read `service.deployment.json` and show the user:
 - The `NODE_TYPE` value in the `inputs` array
 - The `LEDGER_CONN` value
-- The service version
+- The service version (`TAG`)
 
-Remind the user that Nebula and Remote-CLI variables are **intentionally absent** from the
+Remind the user that Nebula and Remote-GUI variables are **intentionally absent** from the
 generated file — they are excluded by design. Reference outputs for each node type live in
 `sample-deployment-policy/`.
 
@@ -148,26 +144,24 @@ generated file — they are excluded by design. Reference outputs for each node 
 ## Step 5 — Publish the service definition
 
 **Do not use `make publish-service`** — the Makefile suppresses all stderr with `@`, so failures
-produce no useful output. Run the underlying `hzn` command directly with all required env vars
-explicitly exported in the same shell invocation:
+produce no useful output. Resolve `SERVICE_NAME` from the config and run the underlying `hzn`
+command directly:
 
 ```shell
-export SERVICE_NAME=service-edgelake-<NODE_TYPE> && \
-export SERVICE_VERSION=2.0.2606 && \
-export ARCH=$(hzn architecture) && \
-export DOCKER_IMAGE_VERSION=2.0.2606 && \
-export DOCKER_IMAGE_BASE=$(grep '^IMAGE' docker-makefiles/.env | awk -F '=' '{print $2}') && \
+export TAG=2.0.2606
+export SERVICE_NAME=$(grep -m1 '^NODE_NAME=' docker-makefiles/anylog-<NODE_TYPE>/node_configs.env | cut -d= -f2- | tr -d '"')
+export ARCH=$(hzn architecture)
 hzn exchange service publish \
   --org="$ORG" \
   --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
-  -O -P --json-file=service.definition.json 2>&1
+  -O -P --json-file=docker-makefiles/anylog-<NODE_TYPE>/service.definition.json 2>&1
 ```
 
 After the command completes, verify:
 ```shell
 hzn exchange service list
 ```
-Confirm that `service-edgelake-<NODE_TYPE>_<version>_<arch>` appears in the list.
+Confirm that `${SERVICE_NAME}_${TAG}_${ARCH}` appears in the list.
 
 ---
 
@@ -179,8 +173,8 @@ Confirm that `service-edgelake-<NODE_TYPE>_<version>_<arch>` appears in the list
 hzn exchange service addpolicy \
   --org="$ORG" \
   --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
-  -f service.policy.json \
-  "${ORG}/service-edgelake-<NODE_TYPE>_<version>_$(hzn architecture)" 2>&1
+  -f docker-makefiles/anylog-<NODE_TYPE>/service.policy.json \
+  "${ORG}/${SERVICE_NAME}_${TAG}_$(hzn architecture)" 2>&1
 ```
 
 This attaches the constraint `purpose == edgelake AND openhorizon.allowPrivileged == true` to the
@@ -190,44 +184,40 @@ published service.
 
 ## Step 7 — Publish the deployment policy
 
-**Do not use `make publish-deployment-policy`** — same stderr-suppression issue. Export the
-required vars and run directly:
+**Do not use `make publish-deployment-policy`** — same stderr-suppression issue. Run directly:
 
 ```shell
-export SERVICE_NAME=service-edgelake-<NODE_TYPE> && \
-export SERVICE_VERSION=2.0.2606 && \
-export HZN_ORG_ID=$ORG && \
 hzn exchange deployment addpolicy \
   --org="$ORG" \
   --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
-  -f service.deployment.json \
-  "${ORG}/policy-service-edgelake-<NODE_TYPE>_<version>" 2>&1
+  -f docker-makefiles/anylog-<NODE_TYPE>/service.deployment.json \
+  "${ORG}/policy-${SERVICE_NAME}_${TAG}" 2>&1
 ```
 
 Verify:
 ```shell
-hzn exchange deployment listpolicy 2>&1 | grep edgelake
+hzn exchange deployment listpolicy 2>&1 | grep "$SERVICE_NAME"
 ```
-Confirm that `policy-service-edgelake-<NODE_TYPE>_<version>` appears in the output.
+Confirm that `policy-${SERVICE_NAME}_${TAG}` appears in the output.
 
 ---
 
 ## Step 8 — Agent registration (optional — run on the edge node)
 
 `make agent-run` registers the **local machine** as an OH agent. It must be run on the machine
-where the EdgeLake container will actually execute, not necessarily the machine running this skill.
+where the AnyLog container will actually execute, not necessarily the machine running this skill.
 
 Provide the user with the command to run on their target machine:
 
 ```shell
 # Run on the edge / target machine
-make agent-run EDGELAKE_TYPE=<NODE_TYPE>
+make agent-run ANYLOG_TYPE=anylog-<NODE_TYPE>
 
 # Then watch for an agreement to form (30-120 seconds)
 hzn agreement list
 
 # View container logs once the container starts
-make hzn-logs EDGELAKE_TYPE=<NODE_TYPE>
+make hzn-logs ANYLOG_TYPE=anylog-<NODE_TYPE>
 ```
 
 Ask the user whether they want to run `agent-run` now (if they are on the target machine) or
@@ -254,5 +244,5 @@ Surface the output. A healthy node shows all key processes as `Running`:
 
 If any required process is `Not declared` or absent, check the container logs:
 ```shell
-make hzn-logs EDGELAKE_TYPE=<NODE_TYPE>
+make hzn-logs ANYLOG_TYPE=anylog-<NODE_TYPE>
 ```

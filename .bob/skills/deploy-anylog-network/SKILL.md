@@ -1,5 +1,5 @@
 ---
-name: deploy-edgelake-network
+name: deploy-anylog-network
 description: >
   Deploy a complete 3-node AnyLog network (Master, Query, Operator) to Open Horizon in the
   correct order. Use when the user says "deploy AnyLog network", "set up AnyLog master query

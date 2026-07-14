@@ -18,7 +18,7 @@
   },
   "properties": [],
   "constraints": [
-    "purpose == edgelake",
+    "purpose == anylog",
     "openhorizon.allowPrivileged == true"
   ],
   "userInput": [
@@ -37,7 +37,7 @@
           "name": "NODE_NAME",
           "label": "Name of the EdgeLake instance",
           "type": "string",
-          "value": "edgelake-operator1"
+          "value": "anylog-operator1"
         },
         {
           "name": "COMPANY_NAME",

@@ -6,7 +6,7 @@ These nodes can be deployed either on the same physical machine (for testing), o
 ![Demo Diagram](imgs/deployment_diagram.png)
 
 
-## Deploying EdgeLake 
+## Deploying AnyLog 
 
 Whether the deployment process is done directly via Docker or Open Horizon, the process is essentially identical.
 0. Prior to deployment, docker should be [installed via OpenHorizon](Documentation/OpenHorizon_install.md), but may require 
@@ -19,7 +19,7 @@ newgrp docker
 
 sudo apt-get -y install make
 ```
-1. Update the corresponding dotenv file - _[Master](docker-makefiles/edgelake_master.env)_, _[Operator](docker-makefiles/edgelake_operator.env)_ or _[Query](docker-makefiles/edgelake_query.env)_. Make sure the following params get update accordingly:
+1. Update the corresponding dotenv file - _[Master](docker-makefiles/anylog_master.env)_, _[Operator](docker-makefiles/anylog_operator.env)_ or _[Query](docker-makefiles/anylog_query.env)_. Make sure the following params get update accordingly:
   * Node Name
    * Company Name
    * LEDGER_CONN associated with Master node - when TCP binding is set to _true_, then 127.0.0.1 as the IP value for LEDGER will not work. 
@@ -29,7 +29,7 @@ sudo apt-get -y install make
 # Information regarding which AnyLog node configurations to enable. By default, even if everything is disabled, AnyLog starts TCP and REST connection protocols
 NODE_TYPE=operator
 # Name of the AnyLog instance
-NODE_NAME=edgelake-operator1
+NODE_NAME=anylog-operator1
 # Owner of the AnyLog instance
 COMPANY_NAME=New Company
 
@@ -115,7 +115,7 @@ MQTT_PASSWD=mqtt4AnyLog!
 MQTT_LOG=false
 
 # Topic to get data for
-MSG_TOPIC=edgelake-demo
+MSG_TOPIC=anylog-demo
 # Logical database name
 MSG_DBMS=new_company
 # Table where to store data
@@ -144,11 +144,11 @@ DEPLOY_LOCAL_SCRIPT=false
 # 2 - interactive debug -- next will move to the next step | continue will jumps to the next section
 DEBUG_MODE=0
 ```
-2. Using the `make` command deploy EdgeLake instance(s).
+2. Using the `make` command deploy AnyLog instance(s).
 
 
 ### Steps Deployment
-Once the user has updated environment configurations, _[Makefile](Makefile)_ can deploy EdgeLake either via a standalone
+Once the user has updated environment configurations, _[Makefile](Makefile)_ can deploy AnyLog either via a standalone
 docker or through open horizon. In general the commands are nearly identical. 
 
 1. Start Node 
@@ -210,14 +210,14 @@ make test-node
 REST Connection Info for testing (Example: 127.0.0.1:32149):
 172.232.157.208:32149
 Node State against 172.232.157.208:32149
-edgelake-operator@172.232.157.208:32148 running
+anylog-operator@172.232.157.208:32148 running
 
 Test                                          Status                                                                            
 ---------------------------------------------|---------------------------------------------------------------------------------|
 Metadata Version                             |bc5b778a91949a980f4013e8fd2da3dd                                                 |
 Metadata Test                                |Pass                                                                             |
-TCP test using 172.232.157.208:32148         |[From Node 172.232.157.208:32148] edgelake-operator@172.232.157.208:32148 running|
-REST test using http://172.232.157.208:32149 |edgelake-operator@172.232.157.208:32148 running                                  |
+TCP test using 172.232.157.208:32148         |[From Node 172.232.157.208:32148] anylog-operator@172.232.157.208:32148 running|
+REST test using http://172.232.157.208:32149 |anylog-operator@172.232.157.208:32148 running                                  |
 
 
     Process         Status       Details                                                                       
@@ -249,9 +249,9 @@ Test Network Against: 172.232.157.208:32149
 
 Address               Node Type Node Name         Status 
 ---------------------|---------|-----------------|------|
-172.232.157.208:32048|master   |edgelake-master  |  +   |
-172.232.157.208:32348|query    |edgelake-query   |  +   |
-172.232.157.208:32148|operator |edgelake-operator|  +   |
+172.232.157.208:32048|master   |anylog-master  |  +   |
+172.232.157.208:32348|query    |anylog-query   |  +   |
+172.232.157.208:32148|operator |anylog-operator|  +   |
 <<COMMENT
 ```
 
@@ -264,14 +264,14 @@ make help EDGELAKE_TYPE=operator
 =====================
 Docker Deployment Options
 =====================
-build            pull latest image for anylogco/edgelake:1.3.2408
+build            pull latest image for anylogco/anylog-network:1.3.2408
 up               bring up docker container based on EDGELAKE_TYPE
 attach           attach to docker container based on EDGELAKE_TYPE
 logs             view docker container logs based on EDGELAKE_TYPE
 down             stop docker container based on EDGELAKE_TYPE
 clean            (stop and) remove volumes and images for a docker container basd on EDGELAKE_TYPE
-tset-node        using cURL make sure EdgeLake is accessible and is configured properly
-test-network     using cURL make sure EdgeLake node is able to communicate with nodes in the network
+tset-node        using cURL make sure AnyLog is accessible and is configured properly
+test-network     using cURL make sure AnyLog node is able to communicate with nodes in the network
 make: hzn: Command not found
 ==============================
 OpenHorizon Deployment Options
@@ -295,19 +295,19 @@ make check EDGELAKE_TYPE=operator
 ENVIRONMENT VARIABLES
 =====================
 EDGELAKE_TYPE          default: generic                               actual: operator
-DOCKER_IMAGE_BASE      default: anylogco/edgelake                     actual: anylogco/edgelake
-DOCKER_IMAGE_NAME      default: edgelake                              actual: edgelake
+DOCKER_IMAGE_BASE      default: anylogco/anylog-network                     actual: anylogco/anylog-network
+DOCKER_IMAGE_NAME      default: anylog-network                        actual: anylog-network
 DOCKER_IMAGE_VERSION   default: latest                                actual: 1.3.2408
 DOCKER_HUB_ID          default: anylogco                              actual: anylogco
 HZN_ORG_ID             default: myorg                                 actual: myorg
 HZN_LISTEN_IP          default: 127.0.0.1                             actual: 127.0.0.1
-SERVICE_NAME                                                          actual: service-edgelake-operator
+SERVICE_NAME                                                          actual: service-anylog-operator
 SERVICE_VERSION                                                       actual: 1.3.2408
 ===================
 EDGELAKE DEFINITION
 ===================
 NODE_TYPE              default: generic                               actual: operator
-NODE_NAME              default: edgelake-node                         actual: edgelake-operator
+NODE_NAME              default: anylog-node                         actual: anylog-operator
 COMPANY_NAME           default: New Company                           actual: New Company
 ANYLOG_SERVER_PORT     default: 32548                                 actual: 32148
 ANYLOG_REST_PORT       default: 32549                                 actual: 32149
@@ -315,13 +315,13 @@ LEDGER_CONN            default: 127.0.0.1:32049                       actual: 66
 <<COMMENT
 ```
 
-Review [Deploy EdgeLake](https://edgelake.github.io/docs/training/quick_start.html) for farther details and specific examples
+Review [Deploy AnyLog](https://github.com/AnyLog-co/docs/training/quick_start.html) for farther details and specific examples
 
 ---
 
 ## Publishing to Open Horizon
 
-This section covers the full lifecycle for publishing EdgeLake as an Open Horizon service and deploying it via policy-based automation. It covers both **single-machine** setups (all three node types on one host, useful for testing) and **multi-machine production** deployments.
+This section covers the full lifecycle for publishing AnyLog as an Open Horizon service and deploying it via policy-based automation. It covers both **single-machine** setups (all three node types on one host, useful for testing) and **multi-machine production** deployments.
 
 ### Prerequisites
 
@@ -371,7 +371,7 @@ Before publishing, update the dotenv file for the node type you are deploying. T
 
 | Field | All nodes | Notes |
 |-------|-----------|-------|
-| `NODE_NAME` | ✅ | Must be unique across all nodes — e.g. `edgelake-master`, `edgelake-query`, `edgelake-operator1` |
+| `NODE_NAME` | ✅ | Must be unique across all nodes — e.g. `anylog-master`, `anylog-query`, `anylog-operator1` |
 | `COMPANY_NAME` | ✅ | Your organisation name — e.g. `Acme Corp` |
 | `LEDGER_CONN` | Query + Operator only | TCP address of the Master node — see IP caveat below |
 
@@ -379,9 +379,9 @@ Before publishing, update the dotenv file for the node type you are deploying. T
 
 | Node type | Dotenv file | TCP port (`ANYLOG_SERVER_PORT`) | REST port (`ANYLOG_REST_PORT`) |
 |-----------|-------------|-------------------------------|-------------------------------|
-| `master` | [`edgelake_master.env`](docker-makefiles/edgelake_master.env) | 32048 | 32049 |
-| `query` | [`edgelake_query.env`](docker-makefiles/edgelake_query.env) | 32348 | 32349 |
-| `operator` | [`edgelake_operator.env`](docker-makefiles/edgelake_operator.env) | 32148 | 32149 |
+| `master` | [`anylog_master.env`](docker-makefiles/anylog_master.env) | 32048 | 32049 |
+| `query` | [`anylog_query.env`](docker-makefiles/anylog_query.env) | 32348 | 32349 |
+| `operator` | [`anylog_operator.env`](docker-makefiles/anylog_operator.env) | 32148 | 32149 |
 
 > Each node type must use **unique ports**. The defaults above are designed to be non-overlapping on a single machine.
 
@@ -394,7 +394,7 @@ Before publishing, update the dotenv file for the node type you are deploying. T
 - **Multi-machine** (nodes on separate hosts): **always** replace `127.0.0.1` with the Master node's real network IP — loopback will not route across machines.
 
 ```dotenv
-# docker-makefiles/edgelake_query.env  (and edgelake_operator.env)
+# docker-makefiles/anylog_query.env  (and anylog_operator.env)
 LEDGER_CONN=<master-node-ip>:32048   # e.g. 192.168.1.10:32048
 ```
 
@@ -421,7 +421,7 @@ Reference outputs for each node type are in [`sample-deployment-policy/`](sample
 
 #### Step 2 — Publish the service definition
 
-Registers the EdgeLake container image and its input schema with the OH exchange. This step is **identical for all node types** — the service definition is shared.
+Registers the AnyLog container image and its input schema with the OH exchange. This step is **identical for all node types** — the service definition is shared.
 
 ```shell
 make publish-service EDGELAKE_TYPE=master
@@ -439,7 +439,7 @@ hzn exchange service list
 
 #### Step 3 — Publish the service policy
 
-Attaches constraints to the published service so it only deploys to nodes that declare `purpose == edgelake` and `openhorizon.allowPrivileged == true`. Also identical for all node types.
+Attaches constraints to the published service so it only deploys to nodes that declare `purpose == anylog` and `openhorizon.allowPrivileged == true`. Also identical for all node types.
 
 ```shell
 make publish-service-policy EDGELAKE_TYPE=master
@@ -448,7 +448,7 @@ make publish-service-policy EDGELAKE_TYPE=master
 # hzn exchange service addpolicy \
 #   --org=${HZN_ORG_ID} --user-pw=${HZN_EXCHANGE_USER_AUTH} \
 #   -f service.policy.json \
-#   ${HZN_ORG_ID}/service-edgelake-master_${SERVICE_VERSION}_$(hzn architecture)
+#   ${HZN_ORG_ID}/service-anylog-master_${SERVICE_VERSION}_$(hzn architecture)
 ```
 
 #### Step 4 — Publish the deployment policy
@@ -462,7 +462,7 @@ make publish-deployment-policy EDGELAKE_TYPE=master
 # hzn exchange deployment addpolicy \
 #   --org=${HZN_ORG_ID} --user-pw=${HZN_EXCHANGE_USER_AUTH} \
 #   -f service.deployment.json \
-#   ${HZN_ORG_ID}/policy-service-edgelake-master_${SERVICE_VERSION}
+#   ${HZN_ORG_ID}/policy-service-anylog-master_${SERVICE_VERSION}
 ```
 
 Verify:
@@ -490,7 +490,7 @@ make publish-version EDGELAKE_TYPE=master
 
 #### Step 5 — Register the agent (run on the edge node)
 
-This command registers the local machine as an OH agent node. It must be run **on the machine where the EdgeLake container will execute**. The node policy in [`node.policy.json`](node.policy.json) satisfies the constraints declared in the deployment policy.
+This command registers the local machine as an OH agent node. It must be run **on the machine where the AnyLog container will execute**. The node policy in [`node.policy.json`](node.policy.json) satisfies the constraints declared in the deployment policy.
 
 ```shell
 # Run on the edge / target machine
@@ -538,7 +538,7 @@ make full-deploy EDGELAKE_TYPE=operator
 #### Multi-machine (production)
 
 1. Note the Master node's real network IP (e.g. `192.168.1.10`).
-2. Update `LEDGER_CONN` in **both** [`edgelake_query.env`](docker-makefiles/edgelake_query.env) and [`edgelake_operator.env`](docker-makefiles/edgelake_operator.env):
+2. Update `LEDGER_CONN` in **both** [`anylog_query.env`](docker-makefiles/anylog_query.env) and [`anylog_operator.env`](docker-makefiles/anylog_operator.env):
    ```dotenv
    LEDGER_CONN=192.168.1.10:32048
    ```
@@ -592,16 +592,16 @@ Expected `test-network` output when all three nodes are healthy:
 ```
 Address               Node Type Node Name         Status
 ---------------------|---------|-----------------|------|
-<master-ip>:32048    |master   |edgelake-master  |  +   |
-<query-ip>:32348     |query    |edgelake-query   |  +   |
-<operator-ip>:32148  |operator |edgelake-operator|  +   |
+<master-ip>:32048    |master   |anylog-master  |  +   |
+<query-ip>:32348     |query    |anylog-query   |  +   |
+<operator-ip>:32148  |operator |anylog-operator|  +   |
 ```
 
 ---
 
 ### Unpublishing / Cleanup
 
-Unregister the OH agent and stop the EdgeLake container on the current node:
+Unregister the OH agent and stop the AnyLog container on the current node:
 
 ```shell
 make hzn-clean
@@ -611,14 +611,14 @@ To remove a published service or policy from the exchange entirely, use `hzn exc
 
 ```shell
 # Remove a deployment policy
-hzn exchange deployment removepolicy ${HZN_ORG_ID}/policy-service-edgelake-master_${SERVICE_VERSION}
+hzn exchange deployment removepolicy ${HZN_ORG_ID}/policy-service-anylog-master_${SERVICE_VERSION}
 
 # Remove a service policy
 hzn exchange service removepolicy \
-  ${HZN_ORG_ID}/service-edgelake-master_${SERVICE_VERSION}_$(hzn architecture)
+  ${HZN_ORG_ID}/service-anylog-master_${SERVICE_VERSION}_$(hzn architecture)
 
 # Remove the service itself
 hzn exchange service remove \
-  ${HZN_ORG_ID}/service-edgelake-master_${SERVICE_VERSION}_$(hzn architecture)
+  ${HZN_ORG_ID}/service-anylog-master_${SERVICE_VERSION}_$(hzn architecture)
 ```
  

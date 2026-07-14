@@ -177,7 +177,7 @@ hzn exchange service addpolicy \
   "${ORG}/${SERVICE_NAME}_${TAG}_$(hzn architecture)" 2>&1
 ```
 
-This attaches the constraint `purpose == edgelake AND openhorizon.allowPrivileged == true` to the
+This attaches the constraint `purpose == anylog AND openhorizon.allowPrivileged == true` to the
 published service.
 
 ---

@@ -178,6 +178,10 @@ publish: prep-service publish-service publish-service-policy publish-deployment-
 publish-version: prep-service publish-service publish-service-policy ## update version
 
 publish-service: ## publish service
+	@if [ -z "$(LICENSE_KEY)" ]; then \
+		echo "ERROR: LICENSE_KEY is required for publish operation. Set LICENSE_KEY environment variable or run 'make license-check' first."; \
+		exit 1; \
+	fi
 	@echo "=================="
 	@echo "PUBLISHING SERVICE"
 	@echo "=================="
@@ -201,6 +205,10 @@ publish-deployment-policy: prep-service ## publish deployment policy
 		$(HZN_ORG_ID)/policy-$(SERVICE_NAME)_$(SERVICE_VERSION)
 
 agent-run: ## start agent
+	@if [ -z "$(LICENSE_KEY)" ]; then \
+		echo "ERROR: LICENSE_KEY is required for start operation. Set LICENSE_KEY environment variable or run 'make license-check' first."; \
+		exit 1; \
+	fi
 	@echo "================"
 	@echo "REGISTERING NODE"
 	@echo "================"
@@ -272,6 +280,18 @@ check-vars: ## show resolved variable values (docker + OH)
 	@echo "SERVICE_VERSION                                         Value: $(SERVICE_VERSION)"
 	@echo "ARCH                                                    Value: $(ARCH)"
 	@echo "POLICY_DIR                                              Value: $(POLICY_DIR)"
+	@echo ""
+	@echo "-- Validation Status --"
+	@if [ -z "$(SERVICE_VERSION)" ]; then \
+		echo "SERVICE_VERSION: ❌ Not set (will use default: 1.0.0)"; \
+	else \
+		echo "SERVICE_VERSION: ✓ $(SERVICE_VERSION)"; \
+	fi
+	@if [ -z "$(LICENSE_KEY)" ]; then \
+		echo "LICENSE_KEY:     ❌ Not set (required for publish/register/start)"; \
+	else \
+		echo "LICENSE_KEY:     ✓ Set"; \
+	fi
 
 help:
 	@echo "Usage: make [target] [VARIABLE=value]"
@@ -286,7 +306,8 @@ help:
 	@echo "                      standalone-operator, standalone-publisher)"
 	@echo "  IMAGE               Docker image repo"
 	@echo "  TAG                 Docker image tag"
-	@echo "  LICENSE_KEY         AnyLog license key"
+	@echo "  SERVICE_VERSION     Service version (semantic: e.g., '1', '1.0', '1.25.03', default: 1.0.0)"
+	@echo "  LICENSE_KEY         AnyLog license key (required for publish/register/start)"
 	@echo "  PROMPT_LICENSE      Prompt if no saved license (default: true)"
 	@echo "  TEST_CONN           REST connection info for test-node / test-network"
 	@echo "  HZN_ORG_ID          Open Horizon exchange org"

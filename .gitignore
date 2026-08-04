@@ -5,3 +5,4 @@ docker-makefiles/docker-compose-template.yaml
 docker-makefiles/docker-compose.yaml
 docker-makefiles/*/*.json
 docker-makefiles/docker-compose-files/
+.license_accepted

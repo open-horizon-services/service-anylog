@@ -15,11 +15,38 @@ NODE_NAME="${NODE_NAME:-}"
 CONTAINER_NAME="${CONTAINER_NAME:-}"
 LICENSE_KEY="${LICENSE_KEY:-}"
 LICENSE_KEY_PROVIDED=false
+SERVICE_VERSION="${SERVICE_VERSION:-1.0.0}"
+
 PROMPT_LICENSE="${PROMPT_LICENSE:-true}"
 
 # ──────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────
+
+
+# ──────────────────────────────────────────────
+# SERVICE_VERSION validation
+# ──────────────────────────────────────────────
+_validate_service_version() {
+  local version="$1"
+  
+  # Empty or unset → use default
+  if [[ -z "$version" ]]; then
+    echo "INFO: SERVICE_VERSION not set, using default: 1.0.0" >&2
+    SERVICE_VERSION="1.0.0"
+    return 0
+  fi
+  
+  # Semantic version pattern: digits, optional .digits, optional .digits
+  # Examples: "1", "1.0", "1.25.03", "2.1.0"
+  if [[ "$version" =~ ^[0-9]+(\.[0-9]+)?(\.[0-9]+)?$ ]]; then
+    echo "INFO: Using SERVICE_VERSION: $version" >&2
+    return 0
+  else
+    die "Invalid SERVICE_VERSION format: '$version'. Must be semantic version (e.g., '1', '1.0', '1.25.03'). Non-semantic values like 'latest' or 'dev' are not allowed."
+  fi
+}
+
 die() { echo "ERROR: $1" >&2; exit "${2:-1}"; }
 
 # Resolve short-form aliases  (operator → anylog-operator)
@@ -32,18 +59,30 @@ _resolve_type() {
 
 # Detect container runtime
 _detect_runtime() {
-  if command -v podman >/dev/null 2>&1; then
+  # Detect container engine
+  if command -v docker >/dev/null 2>&1; then
+    CONTAINER_CMD="docker"
+  elif command -v podman >/dev/null 2>&1; then
     CONTAINER_CMD="podman"
   else
-    CONTAINER_CMD="docker"
+    die "Neither docker nor podman found. Please install one of them."
   fi
 
-  if command -v podman-compose >/dev/null 2>&1; then
-    DOCKER_COMPOSE_CMD="podman-compose"
-  elif command -v docker-compose >/dev/null 2>&1; then
-    DOCKER_COMPOSE_CMD="docker-compose"
+  # Detect compose tool
+  if [[ "$CONTAINER_CMD" == "podman" ]]; then
+    # Podman requires podman-compose
+    if command -v podman-compose >/dev/null 2>&1; then
+      DOCKER_COMPOSE_CMD="podman-compose"
+    else
+      die "podman-compose not found. When using podman, podman-compose is required. Install with: pip3 install podman-compose"
+    fi
   else
-    DOCKER_COMPOSE_CMD="docker compose"
+    # Docker can use docker-compose or docker compose
+    if command -v docker-compose >/dev/null 2>&1; then
+      DOCKER_COMPOSE_CMD="docker-compose"
+    else
+      DOCKER_COMPOSE_CMD="docker compose"
+    fi
   fi
 }
 
@@ -60,7 +99,7 @@ _detect_platform() {
   export ANYLOG_GID=$(id -g)
 }
 
-# Load IMAGE, NODE_NAME, and CONTAINER_NAME from config files
+# Load IMAGE, NODE_NAME, CONTAINER_NAME, and SERVICE_VERSION from config files
 _load_configs() {
   local formatted_file="docker-makefiles/${ANYLOG_TYPE}/formatted_node_configs.env"
   local source_file="docker-makefiles/${ANYLOG_TYPE}/node_configs.env"
@@ -78,6 +117,18 @@ _load_configs() {
   IMAGE=$(grep -m1 '^IMAGE=' "$cfg_file" | cut -d= -f2- | tr -d '"\r')
   NODE_NAME=$(grep -m1 '^NODE_NAME=' "$cfg_file" | cut -d= -f2- | tr -d '"\r')
   CONTAINER_NAME=$(grep -m1 '^CONTAINER_NAME=' "$cfg_file" | cut -d= -f2- | tr -d '"\r')
+  
+  # Validate environment SERVICE_VERSION first (if set)
+  if [[ -n "${SERVICE_VERSION}" && "${SERVICE_VERSION}" != "1.0.0" ]]; then
+    _validate_service_version "$SERVICE_VERSION"
+  fi
+  
+  # Load and validate SERVICE_VERSION from file
+  local file_version
+  file_version=$(grep -m1 '^SERVICE_VERSION=' "$cfg_file" | cut -d= -f2- | tr -d '"\r')
+  SERVICE_VERSION="${SERVICE_VERSION:-${file_version}}"
+  _validate_service_version "$SERVICE_VERSION"
+  export SERVICE_VERSION
 
   # TARGET_NAME is what Docker actually uses — NODE_NAME wins if set, else CONTAINER_NAME
   TARGET_NAME="${NODE_NAME:-${CONTAINER_NAME}}"
@@ -198,7 +249,14 @@ cmd_dry_run() {
 cmd_up() {
   _check_configs
   _load_configs
+  
+  # Validate LICENSE_KEY before deployment
+  if [[ -z "${LICENSE_KEY}" ]]; then
+    echo "INFO: LICENSE_KEY not set, checking configuration files..." >&2
+  fi
   cmd_license_check
+  [[ -n "${LICENSE_KEY}" ]] || die "LICENSE_KEY is required for deployment. Set LICENSE_KEY environment variable or use --license-key flag."
+  
   cmd_dry_run
 
   # -e flag is only valid for `docker run`; docker compose reads LICENSE_KEY from the env file

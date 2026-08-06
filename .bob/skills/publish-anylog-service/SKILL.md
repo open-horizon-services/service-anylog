@@ -117,7 +117,14 @@ file, then re-read it to confirm the change landed correctly.
 
 ## Step 4 — Run license-check and generate policy files
 
+**IMPORTANT: Version Control**
+- `TAG` — Controls the Docker image tag (e.g., `anylogco/anylog-network:2.0.2606`)
+- `SERVICE_VERSION` — Controls the Open Horizon service version in the exchange (e.g., `1.1`)
+- These are **separate** values. Set both explicitly if you need specific versions.
+
 ```shell
+export TAG=2.0.2606
+export SERVICE_VERSION=1.1.0
 make prep-service ANYLOG_TYPE=anylog-<NODE_TYPE>
 ```
 
@@ -125,30 +132,33 @@ This runs `license-check` (resolves/prompts for `LICENSE_KEY` and writes it into
 followed by `docker-makefiles/env2json.sh`, which reads the config and writes four policy files
 into `docker-makefiles/anylog-<NODE_TYPE>/`:
 
-- `service.definition.json`
+- `service.definition.json` — Uses `SERVICE_VERSION` for the service version
 - `service.policy.json`
 - `service.deployment.json`
 - `node.policy.json`
 
-After it completes, read `service.deployment.json` and show the user:
-- The `NODE_TYPE` value in the `inputs` array
-- The `LEDGER_CONN` value
-- The service version (`TAG`)
+**Note:** The generated `service.definition.json` will reference:
+- Docker image: `anylogco/anylog-network:${TAG}`
+- Service version: `${SERVICE_VERSION}` (truncated to major.minor, e.g., 1.1.0 → 1.1)
 
-Remind the user that Nebula and Remote-GUI variables are **intentionally absent** from the
-generated file — they are excluded by design. Reference outputs for each node type live in
-`sample-deployment-policy/`.
+After it completes, verify the generated service version matches expectations. Nebula and Remote-GUI 
+variables are **intentionally absent** from the generated file — they are excluded by design. 
+Reference outputs for each node type live in `sample-deployment-policy/`.
 
 ---
 
 ## Step 5 — Publish the service definition
 
 **Do not use `make publish-service`** — the Makefile suppresses all stderr with `@`, so failures
-produce no useful output. Resolve `SERVICE_NAME` from the config and run the underlying `hzn`
-command directly:
+produce no useful output. Resolve `SERVICE_NAME` and `SERVICE_VERSION` from the config and run the 
+underlying `hzn` command directly:
+
+**CRITICAL:** The service version in the exchange will be `SERVICE_VERSION` (not `TAG`). 
+Use the same `SERVICE_VERSION` value from Step 4.
 
 ```shell
 export TAG=2.0.2606
+export SERVICE_VERSION=1.1.0
 export SERVICE_NAME=$(grep -m1 '^NODE_NAME=' docker-makefiles/anylog-<NODE_TYPE>/node_configs.env | cut -d= -f2- | tr -d '"')
 export ARCH=$(hzn architecture)
 hzn exchange service publish \
@@ -161,7 +171,8 @@ After the command completes, verify:
 ```shell
 hzn exchange service list
 ```
-Confirm that `${SERVICE_NAME}_${TAG}_${ARCH}` appears in the list.
+Confirm that `${SERVICE_NAME}_${SERVICE_VERSION}_${ARCH}` appears in the list (note: version will be 
+truncated to major.minor, e.g., 1.1.0 → 1.1).
 
 ---
 
@@ -169,12 +180,14 @@ Confirm that `${SERVICE_NAME}_${TAG}_${ARCH}` appears in the list.
 
 **Do not use `make publish-service-policy`** — same stderr-suppression issue. Run directly:
 
+**CRITICAL:** Use `SERVICE_VERSION` (not `TAG`) to match the published service from Step 5.
+
 ```shell
 hzn exchange service addpolicy \
   --org="$ORG" \
   --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
   -f docker-makefiles/anylog-<NODE_TYPE>/service.policy.json \
-  "${ORG}/${SERVICE_NAME}_${TAG}_$(hzn architecture)" 2>&1
+  "${ORG}/${SERVICE_NAME}_${SERVICE_VERSION}_$(hzn architecture)" 2>&1
 ```
 
 This attaches the constraint `purpose == anylog AND openhorizon.allowPrivileged == true` to the
@@ -186,19 +199,21 @@ published service.
 
 **Do not use `make publish-deployment-policy`** — same stderr-suppression issue. Run directly:
 
+**CRITICAL:** Use `SERVICE_VERSION` (not `TAG`) to match the published service from Step 5.
+
 ```shell
 hzn exchange deployment addpolicy \
   --org="$ORG" \
   --user-pw="${HZN_EXCHANGE_USER_AUTH}" \
   -f docker-makefiles/anylog-<NODE_TYPE>/service.deployment.json \
-  "${ORG}/policy-${SERVICE_NAME}_${TAG}" 2>&1
+  "${ORG}/policy-${SERVICE_NAME}_${SERVICE_VERSION}" 2>&1
 ```
 
 Verify:
 ```shell
 hzn exchange deployment listpolicy 2>&1 | grep "$SERVICE_NAME"
 ```
-Confirm that `policy-${SERVICE_NAME}_${TAG}` appears in the output.
+Confirm that `policy-${SERVICE_NAME}_${SERVICE_VERSION}` appears in the output.
 
 ---
 

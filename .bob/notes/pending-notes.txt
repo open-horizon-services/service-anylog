@@ -1,0 +1,5 @@
+{"id":"3bc7eb79-582b-4280-bcb3-151880f8d79b","ts":"2026-08-05T18:30:42.413Z","path":"/root/service-anylog-new/docker-makefiles/anylog-operator/node_configs.env","version":"1.0.0","taskID":"3fcbc27d-37d3-46cc-a355-a4a7b751b9d7"}
+{"id":"32372e9d-89f6-41c5-b6d6-0be88cd4d230","ts":"2026-08-06T15:17:24.658Z","path":"/root/service-anylog-new/license-generator/license_key.sh","version":"1.0.0","taskID":"d2a7fc26-adf4-4eac-a3f4-658afbd98abf"}
+{"id":"09c6fc2c-0762-40b2-93a9-6327f72497bb","ts":"2026-08-06T15:17:44.695Z","path":"/root/service-anylog-new/license-generator/license_key.sh","version":"1.0.0","taskID":"d2a7fc26-adf4-4eac-a3f4-658afbd98abf"}
+{"id":"0e42ddca-426a-4502-bb04-6339dd1d7965","ts":"2026-08-06T15:19:28.526Z","path":"/root/service-anylog-new/Makefile","version":"1.0.0","taskID":"d2a7fc26-adf4-4eac-a3f4-658afbd98abf"}
+{"id":"469f89c2-93df-4164-a637-e14128010d67","ts":"2026-08-06T15:21:32.036Z","path":"/root/service-anylog-new/license-generator/license_key.sh","version":"1.0.0","taskID":"d2a7fc26-adf4-4eac-a3f4-658afbd98abf"}

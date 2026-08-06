@@ -165,7 +165,8 @@ prep-build: check-configs ## [TEMPORARY] pull image under original TAG, retag to
 license-check: check-configs ## resolve/prompt for LICENSE_KEY and write it into node_configs.env
 	$(ANYLOG_SH) license-check $(_FLAGS)
 
-prep-service: check-configs license-check ## generate service.definition.json, service.policy.json, service.deployment.json and node.policy.json
+prep-service: check-configs ## generate service.definition.json, service.policy.json, service.deployment.json and node.policy.json
+	$(ANYLOG_SH) license-check --type $(ANYLOG_TYPE) --tag $(TAG)
 	@echo "Open Horizon Dry Run $(ANYLOG_TYPE) - $(NODE_NAME)"
 	bash ./docker-makefiles/env2json.sh $(POLICY_DIR) . $(TAG)
 

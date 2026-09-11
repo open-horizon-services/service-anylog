@@ -125,6 +125,17 @@ This runs `license-check` (resolves/prompts for `LICENSE_KEY` and writes it into
 followed by `docker-makefiles/env2json.sh`, which reads the config and writes four policy files
 into `docker-makefiles/anylog-<NODE_TYPE>/`:
 
+**Important:** `LICENSE_KEY` is **required** for publishing services. The `prep-service` target
+automatically runs `license-check` which:
+- Checks if `LICENSE_KEY` is already set in `node_configs.env`
+- If not found, prompts the user interactively for the license key
+- Validates and saves the key to `node_configs.env` for future use
+- Fails with a clear error if no key is provided
+
+**SERVICE_VERSION Validation:** The system validates that `SERVICE_VERSION` follows semantic
+versioning format (e.g., "1", "1.0", "1.25.03"). Non-semantic values like "latest" or "dev"
+are rejected. If not set, the default "1.0.0" is used.
+
 - `service.definition.json`
 - `service.policy.json`
 - `service.deployment.json`

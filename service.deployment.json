@@ -19,7 +19,16 @@
       "serviceUrl": "$SERVICE_NAME",
       "serviceArch": "",
       "serviceVersionRange": "[0.0.0,INFINITY)",
-      "inputs": []
+      "inputs": [
+        {
+          "name": "SERVICE_VERSION",
+          "value": "$SERVICE_VERSION"
+        },
+        {
+          "name": "LICENSE_KEY",
+          "value": "$LICENSE_KEY"
+        }
+      ]
     }
   ]
 }

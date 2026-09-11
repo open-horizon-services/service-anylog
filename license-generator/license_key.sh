@@ -16,8 +16,15 @@ LICENSE_URL="${LICENSE_URL:-http://23.239.12.151:8001/api/license-accept}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Skip if already accepted and no new key/prompt was requested ──────
-if [[ -f ".license_accepted" && -z "${LICENSE_KEY}" && "${FORCE_LICENSE_PROMPT:-false}" != "true" ]]; then
-  exit 0
+if [[ -f ".license_accepted" ]]; then
+  if [[ -z "${LICENSE_KEY}" && "${FORCE_LICENSE_PROMPT:-false}" != "true" ]]; then
+    exit 0
+  fi
+
+  accepted_key=$(awk -F'|' 'NF >= 5 {print $5; exit}' .license_accepted 2>/dev/null || true)
+  if [[ -n "${accepted_key}" && "${LICENSE_KEY}" == "${accepted_key}" ]]; then
+    exit 0
+  fi
 fi
 
 # ── Smart quote helpers ───────────────────────────────────────────────
@@ -120,7 +127,9 @@ echo "  Expires:    ${EXPIRATION}"
 echo ""
 
 # ── Detect interactive TTY ────────────────────────────────────────────
-_tty_available() { [[ -t 0 ]] || { exec 3</dev/tty; } 2>/dev/null; }
+_tty_available() {
+  [[ -r /dev/tty && -w /dev/tty ]]
+}
 if ! _tty_available 2>/dev/null; then
   NAME="Unknown"
   EMAIL="Unknown"
@@ -152,13 +161,23 @@ PROJECT="${PROJECT:-Unknown}"
 
 # ── Final acceptance confirmation ─────────────────────────────────────
 echo ""
-while true; do
-  printf "Do you accept the license agreement? [yes/no]: "; read -r ANSWER </dev/tty
-  case "${ANSWER}" in
-    yes|no) break ;;
-    *) echo "  ERROR: Please type 'yes' or 'no'." ;;
-  esac
-done
+if ! _tty_available 2>/dev/null; then
+  if [[ "${FORCE_LICENSE_PROMPT:-false}" == "true" ]]; then
+    echo "Non-interactive environment detected; skipping acceptance prompt because a license key was already provided."
+    ANSWER="yes"
+  else
+    echo "Non-interactive environment detected; assuming license agreement already accepted for this provided license key."
+    ANSWER="yes"
+  fi
+else
+  while true; do
+    printf "Do you accept the license agreement? [yes/no]: "; read -r ANSWER </dev/tty
+    case "${ANSWER}" in
+      yes|no) break ;;
+      *) echo "  ERROR: Please type 'yes' or 'no'." ;;
+    esac
+  done
+fi
 
 echo ""
 if [[ "${ANSWER}" != "yes" ]]; then
@@ -193,7 +212,12 @@ if [[ "${HTTP_CODE}" == "200" ]] || [[ "${HTTP_CODE}" == "201" ]]; then
 else
   echo "We could not complete license registration right now."
   echo "Please contact support@anylog.co with your license information."
-  printf "Continue anyway? [yes/no]: "; read -r CONT </dev/tty
+  if ! _tty_available 2>/dev/null; then
+    echo "Non-interactive environment detected; continuing with unregistered acceptance record."
+    CONT="yes"
+  else
+    printf "Continue anyway? [yes/no]: "; read -r CONT </dev/tty
+  fi
   if [[ "${CONT}" != "yes" ]]; then
     echo "Aborting."
     exit 1

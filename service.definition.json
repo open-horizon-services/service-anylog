@@ -39,6 +39,18 @@
       "label": "REST API port",
       "type": "int",
       "defaultValue": "32549"
+    },
+    {
+      "name": "SERVICE_VERSION",
+      "label": "Service version (semantic versioning: e.g., '1', '1.0', '1.25.03')",
+      "type": "string",
+      "defaultValue": "1.0.0"
+    },
+    {
+      "name": "LICENSE_KEY",
+      "label": "License key (required for publish, register, and start operations)",
+      "type": "string",
+      "defaultValue": ""
     }
   ],
   "deployment": {

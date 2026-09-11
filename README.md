@@ -67,11 +67,13 @@ files into its own subdirectory, using the `NODE_NAME` from that instance's `.en
 | Tool | Required for |
 |---|---|
 | `docker` or `podman` | All container operations |
-| `docker compose` / `docker-compose` / `podman-compose` | Docker compose targets |
+| `docker compose` / `docker-compose` | Docker compose targets (when using Docker) |
+| `podman-compose` | **Required** when using `podman` (install: `pip3 install podman-compose`) |
 | `jq` | `prep-service` (JSON policy generation) |
 | `hzn` (Open Horizon CLI) | All `publish-*`, `agent-run`, `deploy-check` targets |
 
-The Makefile auto-detects `docker` vs `podman` and `docker compose` vs `docker-compose` vs `podman-compose`.
+The Makefile and deploy.sh auto-detect `docker` vs `podman` and the appropriate compose tool.
+When using `podman`, `podman-compose` is mandatory and the script will fail if it's not installed.
 `hzn` is optional — all Docker compose targets work without it.
 
 ---
@@ -103,6 +105,10 @@ All other variables are passed through to the container at runtime.
 | `HZN_LISTEN_IP` | `127.0.0.1` | OpenHorizon listen IP |
 | `SERVICE_VERSION` | same as `TAG` | OH service version |
 | `HZN_EXCHANGE_USER_AUTH` | *(required for publish)* | OH exchange credentials |
+
+| `SERVICE_VERSION` | `1.0.0` | Service version using semantic versioning format (e.g., "1", "1.0", "1.25.03"). Used for version tracking across deployments. Non-semantic values like "latest" or "dev" are rejected. |
+| `LICENSE_KEY` | *(none)* | **Required** for `publish`, `register` (agent-run), and `start` operations. AnyLog license key for deployment authorization. If not set, `license-check` (run automatically by `up` and `prep-service`) prompts for it and writes it into `node_configs.env`. Set via environment variable, `--license-key` flag, or interactively when prompted. |
+
 
 ---
 
@@ -138,6 +144,196 @@ DEPLOYMENTS_REPO="https://github.com/<your-org>/deployment-scripts"
 # Branch associated with git repo
 DEPLOYMENTS_BRANCH="main"
 ```
+
+
+
+---
+
+## Environment Variables
+
+### SERVICE_VERSION
+
+The `SERVICE_VERSION` environment variable tracks the version of the AnyLog service being deployed using semantic versioning format.
+
+**Format:** Semantic versioning (e.g., "1", "1.0", "1.25.03")
+
+**Default:** If not explicitly set, the system uses "1.0.0" as the default value.
+
+**Validation:** The deployment script validates that SERVICE_VERSION follows semantic versioning format. Non-semantic values like "latest", "dev", or "main" are rejected with a clear error message.
+
+**Usage Examples:**
+
+```bash
+# Explicit version for production
+export SERVICE_VERSION=1.2.5
+make up ANYLOG_TYPE=anylog-operator
+
+# Using default (1.0.0)
+make up ANYLOG_TYPE=anylog-operator
+
+# Invalid - will be rejected
+export SERVICE_VERSION=latest  # ❌ Not semantic versioning
+make up ANYLOG_TYPE=anylog-operator
+```
+
+**Best Practices:**
+- Use explicit versions for production deployments
+- Follow semantic versioning conventions (MAJOR.MINOR.PATCH)
+- Update SERVICE_VERSION when deploying new releases
+- Document version changes in your deployment logs
+
+### LICENSE_KEY
+
+The `LICENSE_KEY` environment variable is **required** for publish, register (agent-run), and start operations. It provides deployment authorization for AnyLog services.
+
+**Requirement:** Mandatory for `make publish`, `make agent-run`, and `make up` operations.
+
+**Validation:** The Makefile validates that LICENSE_KEY is set before executing publish, register, or start targets. Missing LICENSE_KEY results in a clear error message directing users to set the variable or run `make license-check`.
+
+**Automatic Handling:** If LICENSE_KEY is not set in `node_configs.env`, the `license-check` target (automatically run by `up` and `prep-service`) prompts for it interactively and writes it back to the configuration file for future use.
+
+**Usage Examples:**
+
+```bash
+# Set via environment variable
+export LICENSE_KEY="your-license-key-here"
+make up ANYLOG_TYPE=anylog-operator
+
+# Set via command line
+make up ANYLOG_TYPE=anylog-operator LICENSE_KEY="your-license-key-here"
+
+# Interactive prompt (first run)
+make up ANYLOG_TYPE=anylog-operator
+# Prompts: "License Key: "
+# Saves to node_configs.env for future runs
+
+# Explicit license check
+make license-check ANYLOG_TYPE=anylog-operator
+```
+
+
+---
+
+## Testing and Validation
+
+### Pre-Deployment Validation
+
+Before deploying AnyLog services, validate your configuration to ensure SERVICE_VERSION and LICENSE_KEY are properly set:
+
+```bash
+# Check all variable values and validation status
+make check-vars ANYLOG_TYPE=anylog-operator
+
+# Output includes validation status:
+# SERVICE_VERSION: ✓ 1.2.5
+# LICENSE_KEY:     ✓ Set
+```
+
+### SERVICE_VERSION Validation
+
+The deployment script automatically validates SERVICE_VERSION format:
+
+```bash
+# Valid semantic versions (will succeed)
+export SERVICE_VERSION=1
+make up ANYLOG_TYPE=anylog-operator
+
+export SERVICE_VERSION=1.0
+make up ANYLOG_TYPE=anylog-operator
+
+export SERVICE_VERSION=1.25.03
+make up ANYLOG_TYPE=anylog-operator
+
+# Invalid versions (will fail with clear error)
+export SERVICE_VERSION=latest  # ❌ Not semantic versioning
+make up ANYLOG_TYPE=anylog-operator
+# ERROR: Invalid SERVICE_VERSION format: 'latest'. Must be semantic version...
+
+export SERVICE_VERSION=dev     # ❌ Not semantic versioning
+make up ANYLOG_TYPE=anylog-operator
+# ERROR: Invalid SERVICE_VERSION format: 'dev'. Must be semantic version...
+```
+
+### LICENSE_KEY Validation
+
+Makefile targets that require LICENSE_KEY will fail with clear error messages if it's not set:
+
+```bash
+# Missing LICENSE_KEY for publish
+make publish ANYLOG_TYPE=anylog-operator
+# ERROR: LICENSE_KEY is required for publish operation...
+
+# Missing LICENSE_KEY for agent registration
+make agent-run ANYLOG_TYPE=anylog-operator
+# ERROR: LICENSE_KEY is required for start operation...
+
+# Valid with LICENSE_KEY set
+export LICENSE_KEY="your-license-key"
+make publish ANYLOG_TYPE=anylog-operator
+# ✓ Success
+```
+
+### Configuration File Validation
+
+Use the test-anylog-service skill to validate configuration files before deployment:
+
+```bash
+# Validate all configuration files
+bob "test the anylog service configuration"
+
+# The skill checks:
+# - SERVICE_VERSION is semantic version format
+# - LICENSE_KEY is present (not placeholder)
+# - Environment files have sane defaults
+# - Provides clear error messages and correction guidance
+```
+
+### Runtime Testing
+
+After deployment, verify the service is running correctly:
+
+```bash
+# Full test suite (status + node + network)
+make full-test ANYLOG_TYPE=anylog-operator
+
+# Individual tests
+make test-status ANYLOG_TYPE=anylog-operator      # Check node status
+make test-node ANYLOG_TYPE=anylog-operator        # Test node configuration
+make test-network ANYLOG_TYPE=anylog-operator     # Test network connectivity
+make check-processes ANYLOG_TYPE=anylog-operator  # List active/inactive services
+```
+
+**Note on Operator Testing**: An operator node can be deployed and tested locally to verify it starts correctly and loads configuration. However, full functionality testing requires a master node to be available for blockchain synchronization. Without a master node connection, the operator will run but show connection errors in logs when attempting to sync metadata. For complete network testing, deploy both master and operator nodes.
+
+### Troubleshooting
+
+**SERVICE_VERSION Issues:**
+- **Symptom:** Deployment fails with "Invalid SERVICE_VERSION format"
+- **Solution:** Ensure SERVICE_VERSION follows semantic versioning (e.g., "1", "1.0", "1.25.03")
+- **Check:** Run `make check-vars` to see current value
+
+**LICENSE_KEY Issues:**
+- **Symptom:** Publish/register/start fails with "LICENSE_KEY is required"
+- **Solution:** Set LICENSE_KEY via environment variable or run `make license-check`
+- **Check:** Run `make check-vars` to verify LICENSE_KEY is set
+
+**Default Value Behavior:**
+- If SERVICE_VERSION is not set, deployment uses "1.0.0" automatically
+- Check deployment logs for "INFO: Using SERVICE_VERSION: 1.0.0" message
+
+
+
+**Best Practices:**
+- Store LICENSE_KEY securely (use environment variables or secrets management)
+- Never commit LICENSE_KEY values to version control
+- Use `make license-check` to validate and save license keys
+- Set `PROMPT_LICENSE=false` in CI/CD environments to fail fast instead of prompting
+
+**Security Notes:**
+- LICENSE_KEY is written to `node_configs.env` after acceptance
+- Ensure `node_configs.env` files are excluded from version control (via `.gitignore`)
+- Use secure methods to distribute license keys to deployment environments
+
 
 The node pulls the repo at startup, so any configuration changes are applied on the next container restart
 without re-publishing the OH service.
